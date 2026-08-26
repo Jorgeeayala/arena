@@ -1,0 +1,2501 @@
+:root {
+  --bg-app: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --bg-input: #ffffff;
+  --bg-navbar: rgba(255, 255, 255, 0.92);
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-subtle: #64748b;
+  
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+  --primary-border: #93c5fd;
+  
+  --success: #10b981;
+  --success-hover: #059669;
+  --success-light: #ecfdf5;
+  --success-border: #6ee7b7;
+  
+  --danger: #ef4444;
+  --danger-light: #fef2f2;
+  --danger-border: #fca5a5;
+
+  --warning: #f59e0b;
+  --warning-light: #fffbe2;
+
+  --border-light: #cbd5e1;
+  --border-focus: #2563eb;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 10px 25px -3px rgba(15, 23, 42, 0.15), 0 4px 10px -2px rgba(15, 23, 42, 0.08);
+
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg-app: #0f172a;
+  --bg-card: #1e293b;
+  --bg-card-hover: #334155;
+  --bg-input: #0f172a;
+  --bg-navbar: rgba(15, 23, 42, 0.92);
+  --text-main: #f8fafc;
+  --text-muted: #cbd5e1;
+  --text-subtle: #94a3b8;
+  
+  --primary: #38bdf8;
+  --primary-hover: #7dd3fc;
+  --primary-light: rgba(56, 189, 248, 0.18);
+  --primary-border: rgba(56, 189, 248, 0.45);
+  
+  --success: #34d399;
+  --success-hover: #6ee7b7;
+  --success-light: rgba(52, 211, 153, 0.18);
+  --success-border: rgba(52, 211, 153, 0.45);
+  
+  --danger: #f87171;
+  --danger-light: rgba(248, 113, 113, 0.18);
+  --danger-border: rgba(248, 113, 113, 0.45);
+
+  --warning: #fbbf24;
+  --warning-light: rgba(251, 191, 36, 0.18);
+
+  --border-light: #334155;
+  --border-focus: #38bdf8;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  /* Red de seguridad: nada debería poder generar scroll horizontal en
+     mobile. Si algún elemento se pasa de ancho por error, esto evita que
+     la app entera "se corra" hacia un costado en vez de solo recortar
+     ese elemento puntual. */
+  overflow-x: hidden;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* App Shell Layout */
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Splash de arranque (logo MJ Estudio Contable). Fondo negro a propósito:
+   el logo está diseñado sobre negro y así no queda un recuadro al cargar. */
+.splash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+  color: #f8fafc;
+  padding: 24px 24px calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+.splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  gap: 18px;
+}
+
+.splash-logo-wrap {
+  position: relative;
+  width: min(88vw, 360px);
+  height: min(88vw, 360px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-logo-glow {
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(26, 155, 184, 0.42) 0%, transparent 72%);
+  filter: blur(22px);
+  pointer-events: none;
+  animation: splashGlowPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes splashGlowPulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.splash-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  position: relative;
+  z-index: 1;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.splash-message {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.splash-progress {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.splash-progress-track {
+  width: 100%;
+  height: 6px;
+  background-color: #1e293b;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.splash-progress-fill {
+  height: 100%;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #1d4ed8 0%, #0ea5b7 100%);
+}
+
+.splash-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 8px;
+}
+
+.splash-progress-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.splash-progress-pct {
+  color: #38bdf8;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background-color: var(--bg-navbar);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-light);
+  /* Con la app en modo edge-to-edge (obligatorio desde Android 15), el
+     contenido dibuja por debajo de la barra de estado del sistema. Desde
+     Capacitor 8.3+ el propio framework inyecta --safe-area-inset-top de
+     forma confiable (algunos WebView de Android tienen bugs con el
+     env() puro), por eso se lee esa variable primero y env() como
+     respaldo. En web/PWA normal ambos dan 0 y no cambia nada. */
+  padding: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 16px 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.navbar-content {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-main);
+  text-decoration: none;
+}
+
+.brand-icon-wrapper {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: #000000;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+<<<<<<< Updated upstream
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+=======
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+  overflow: hidden;
+  flex-shrink: 0;
+>>>>>>> Stashed changes
+}
+
+.nav-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background-color 0.1s ease, border-color 0.1s ease, transform 0.1s ease, color 0.1s ease;
+}
+
+.theme-toggle-btn:hover {
+  background-color: var(--bg-card-hover);
+  border-color: var(--primary-border);
+  color: var(--primary);
+  transform: scale(1.05);
+}
+
+.pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.pill-btn:hover {
+  background-color: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: #cbd5e1;
+}
+
+.pill-btn.active {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary-border);
+}
+
+.user-avatar-btn,
+.user-avatar-badge-static {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 6px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card);
+  user-select: none;
+}
+
+.user-avatar-btn:hover {
+  border-color: #cbd5e1;
+  box-shadow: var(--shadow-sm);
+}
+
+.avatar-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.2);
+}
+
+/* Menú hamburguesa (solo mobile, ver media query 640px para mostrarlo) */
+/* En desktop el grupo izquierdo mobile no existe; el logo vive en .brand-badge */
+.mobile-nav-left {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mobile-nav-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #000000;
+  flex-shrink: 0;
+}
+
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Backdrop de todo el drawer (cubre pantalla completa, cierra al tocar) */
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(1px);
+}
+
+/* Drawer: entra deslizándose desde el borde izquierdo hacia la derecha,
+   cubre toda la altura de la pantalla por encima del navbar. Queda con
+   lugar (debajo del toggle de tema) para ir sumando más opciones. */
+.mobile-drawer-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 56;
+  width: 78%;
+  max-width: 280px;
+  background-color: var(--bg-card);
+  border-right: 1px solid var(--border-light);
+  box-shadow: var(--shadow-md, 4px 0 24px rgba(0, 0, 0, 0.22));
+  padding: calc(14px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.mobile-drawer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.mobile-drawer-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #000000;
+  flex-shrink: 0;
+}
+
+.mobile-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm, 8px);
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-menu-item:hover,
+.mobile-menu-item:active {
+  background-color: var(--bg-card-hover);
+}
+
+/* Screen Wrapper */
+.screen {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  /* El padding-bottom extra es para el modo edge-to-edge: que el final
+     de cada pantalla no quede tapado por el área de gestos/barra de
+     navegación de Android. Ver nota de --safe-area-inset-top más arriba
+     sobre por qué se usa var()+env() combinados. */
+  padding: 24px 16px calc(40px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  flex: 1;
+  animation: fadeIn 0.1s ease-out;
+}
+
+.screen.wide {
+  max-width: 860px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: calc(100vh - 120px);
+}
+
+/* Picker & Welcome Screen Styles */
+.hero-card {
+  width: 100%;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  padding: 32px 24px;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 20px;
+}
+
+.picker-icon-box {
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
+  background: var(--primary-light);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  box-shadow: inset 0 0 0 1px var(--primary-border);
+}
+
+.picker-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+
+.picker-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 340px;
+  margin: 0 auto 24px;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.picker-list-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.year-row-btn {
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 16px 20px !important;
+  width: 100%;
+}
+
+.year-row-chevron {
+  color: var(--text-subtle);
+  transition: transform 0.1s ease, color 0.1s ease;
+}
+
+.year-row-btn:hover .year-row-chevron {
+  color: var(--primary);
+  transform: translateX(3px);
+}
+
+.picker-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background-color 0.1s ease, border-color 0.1s ease, transform 0.1s ease, box-shadow 0.1s ease, color 0.1s ease;
+}
+
+.picker-btn:hover {
+  border-color: var(--primary-border);
+  background-color: var(--primary-light);
+  color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.picker-btn:active {
+  transform: translateY(0);
+}
+
+/* Skeleton Loading State */
+.skeleton-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.skeleton-item {
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: loadingPulse 1.5s infinite;
+}
+
+@keyframes loadingPulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Topbar in Screens */
+.screen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.screen-title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.screen-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.screen-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.back-btn:hover {
+  background-color: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+/* Action Bar & Search */
+.list-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-subtle);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 36px 10px 38px;
+  font-size: 15px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  outline: none;
+  transition: all 0.15s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.search-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-subtle);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-full);
+}
+
+.clear-search-btn:hover {
+  color: var(--text-main);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-md);
+  background-color: var(--success);
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-primary:hover {
+  background-color: var(--success-hover);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Modificador para el botón "Sincronizar usuarios": texto y gap un poco
+   más compactos para que entre en una sola línea incluso en modales
+   angostos, en vez de envolver a una segunda línea. */
+.btn-sync-users {
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Rotación típica de "sincronizando" para el ícono de refresh. La
+   duración de 0.9s es la que se siente "activa" sin marear; linear para
+   que no acelere/frene en cada vuelta. */
+.spin {
+  animation: spin-rotate 0.9s linear infinite;
+}
+
+@keyframes spin-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Botón "Filtros" (disparador del bottom-sheet en mobile) ---
+   Oculto por defecto: en desktop los filtros ya están siempre visibles
+   debajo, así que este botón no tiene motivo para existir ahí. El media
+   query de mobile (más abajo) lo pone en display:inline-flex. Esta regla
+   TIENE que ir antes que esa, o la pisa. */
+.mobile-filters-trigger {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Filter Bar & Quick Action Controls. Estas reglas base (desktop) TIENEN
+   que ir antes que la @media (max-width: 640px) de más abajo, porque esa
+   media query redeclara las mismas propiedades (display, gap,
+   border-radius, padding, margin-bottom) para el modo bottom-sheet de
+   mobile. Con la misma especificidad, en un empate gana la que aparece
+   después en el archivo -- así que si esta iba después (como estaba
+   antes), pisaba SIEMPRE a la versión de mobile sin importar el ancho de
+   pantalla. Eso era lo que dejaba el backdrop y el botón "X" de cerrar
+   completamente inertes en mobile: estaban en display:none pase lo que
+   pase, aunque el resto de la hoja sí se viera. */
+.filter-controls-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.filter-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  margin-top: 2px;
+  border-top: 1px solid var(--border-light);
+}
+
+.filter-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filter-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mobile-filters-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background-color: var(--primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* --- Cabecera propia del sheet (solo mobile) --- */
+.filters-sheet-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.filters-sheet-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.filters-sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* Backdrop del bottom-sheet: no hace nada en desktop */
+.filters-backdrop {
+  display: none;
+}
+
+/* Stats Counter Badge.
+   flex-wrap: si hay filtros activos (Encargado/Vencimiento) Y el número
+   "X de Y" es largo (ej. "395 de 395"), antes competían por el mismo
+   ancho de fila sin poder ceder -- en pantallas angostas se apretaban o,
+   por el overflow-x:hidden global, alguna etiqueta se recortaba fuera de
+   la vista. Ahora las etiquetas de filtro pasan a su propia línea si no
+   entran, sin afectar nunca al contador de la izquierda. */
+.stats-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.stats-bar-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.stats-bar-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-card-hover);
+  font-weight: 600;
+  color: var(--text-main);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Pantalla "Asignar clientes" (Super/Admin) */
+.assign-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assign-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.assign-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.assign-row-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Toolbar de acciones masivas (asignación rápida / round-robin) */
+.assign-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Envuelve buscador + toolbar + paneles + filtros de esta pantalla.
+   Sin esto, los .filter-row (que no traen su propio margen -- en la
+   lista principal viven dentro de una tarjeta con gap, acá no) quedaban
+   pegados unos contra otros y contra el contador de abajo. */
+.assign-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Panel expandible de confirmación (round-robin) o selección de usuario
+   activo (asignación rápida). Mismo tono que las tarjetas para que se
+   sienta parte del flujo, no un popup aparte. */
+.assign-confirm-box {
+  overflow: hidden;
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Con la asignación rápida activa, la fila entera se vuelve un botón
+   grande: tocar en cualquier parte (menos el select) asigna al toque. */
+.assign-row-quick {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.assign-row-quick:hover {
+  border-color: var(--primary-border);
+  background-color: var(--bg-card-hover);
+}
+
+/* Se pinta a medida que vas asignando clientes al usuario activo -- el
+   feedback visual inmediato es lo que hace que el modo rápido se sienta
+   como "ir marcando casillas" en vez de una lista ciega. */
+.assign-row-matched {
+  background-color: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.assign-row-matched:hover {
+  background-color: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.55);
+}
+
+.assign-row-current {
+  font-size: 12px;
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+/* Agrupación visual por vencimiento (para ver el ciclo del round-robin) */
+.assign-group {
+  margin-bottom: 16px;
+}
+
+.assign-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.assign-group-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  background-color: var(--bg-card-hover);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+}
+
+/* Client Card List & Swipe Gestures */
+.client-list {
+  list-style: none;
+  position: relative;
+  /* El alto real y la posición de cada tarjeta ahora los calcula el
+     virtualizador (@tanstack/react-virtual) e inyecta como estilos
+     inline por tarjeta -- por eso ya no hace falta flex/gap acá. */
+}
+
+.swipe-card-wrapper {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  list-style: none;
+  touch-action: pan-y;
+}
+
+.swipe-hint-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background-color: var(--bg-card);
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  user-select: none;
+}
+
+.client-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s ease;
+}
+
+.client-card:hover {
+  border-color: var(--primary-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.client-card:active {
+  transform: translateY(0);
+  background-color: var(--bg-card-hover);
+}
+
+.client-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.client-avatar-default {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
+  flex-shrink: 0;
+}
+
+.client-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.client-card-chevron {
+  color: var(--text-subtle);
+  transition: transform 0.15s ease;
+}
+
+.client-card:hover .client-card-chevron {
+  color: var(--primary);
+  transform: translateX(2px);
+}
+
+/* Indicador persistente de Presentado/Archivado en la tarjeta -- chico a
+   propósito (solo un ícono, sin texto ni nombre) para no agrandar la
+   tarjeta. Gris cuando no está marcado, se colorea al instante al marcar
+   (por swipe o por click), tanto en mobile como en PC. */
+.status-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  color: var(--text-subtle);
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-light);
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.status-dot-presentado {
+  color: var(--success);
+  background-color: var(--success-light);
+  border-color: var(--success-border);
+}
+
+.status-dot-archivado {
+  color: #a78bfa;
+  background-color: rgba(167, 139, 250, 0.18);
+  border-color: rgba(167, 139, 250, 0.45);
+}
+
+/* Empty & Error State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background-color: var(--bg-card);
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--text-subtle);
+  margin-bottom: 12px;
+}
+
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background-color: var(--danger-light);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+/* Field Grid & Cards */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.field-card {
+  position: relative;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.field-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: var(--primary);
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+
+.field-card:focus-within,
+.field-card-active {
+  border-color: var(--border-focus);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.12), 0 0 0 1px var(--primary-light);
+  transform: translateY(-2px);
+  background-color: var(--bg-card-hover);
+}
+
+.field-card:focus-within::before,
+.field-card-active::before {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.field-label-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.active-field-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background-color: var(--primary-light);
+  color: var(--primary);
+  letter-spacing: 0.02em;
+  animation: slideInBadge 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideInBadge {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.field-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.field-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-input);
+  color: var(--text-main);
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.field-input:focus {
+  background-color: var(--bg-card);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  transform: scale(1.005);
+}
+
+.field-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-sm);
+  background-color: var(--primary);
+  color: white;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.field-save-btn:hover {
+  background-color: var(--primary-hover);
+}
+
+.field-save-btn:disabled {
+  background-color: var(--border-light);
+  color: var(--text-subtle);
+  cursor: default;
+}
+
+.field-save-btn.saved {
+  background-color: var(--success);
+}
+
+/* YES / NO Toggle Switch Pair */
+.yesno-toggle-group {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.yesno-toggle-btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.yesno-toggle-btn:hover {
+  border-color: var(--border-focus);
+  background-color: var(--bg-card-hover);
+}
+
+.yesno-toggle-btn.active-si {
+  background-color: var(--success-light);
+  border-color: var(--success-border);
+  color: var(--success);
+}
+
+.yesno-toggle-btn.active-no {
+  background-color: var(--danger-light);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.select-input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-input);
+  color: var(--text-main);
+  outline: none;
+}
+
+.select-input:focus {
+  background-color: var(--bg-card);
+  border-color: var(--border-focus);
+}
+
+/* Modal / Card Header Banner for Client Details */
+.client-detail-header {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.client-detail-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.client-detail-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+}
+
+.client-detail-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.client-detail-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.save-all-notice {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-app);
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Footer / Action Bar */
+.bottom-submit-bar {
+  margin-top: 10px;
+  display: flex;
+  gap: 12px;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--bg-card-hover);
+}
+
+/* Spinner Icon Spin */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 130px;
+}
+
+.filter-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-pill:hover {
+  border-color: var(--border-focus);
+  color: var(--text-main);
+}
+
+.filter-pill.active {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+/* Vencimiento filter pill: swaps from "Día X" to digit index (0, 1, 2...) on hover */
+.filter-pill-vencimiento {
+  min-width: 58px;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+}
+
+.filter-pill-vencimiento .pill-day-label {
+  display: inline-block;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.filter-pill-vencimiento .pill-digit-label {
+  display: none;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  transform: scale(1.05);
+}
+
+.filter-pill-vencimiento:hover .pill-day-label,
+.filter-pill-vencimiento:focus-visible .pill-day-label {
+  display: none;
+}
+
+.filter-pill-vencimiento:hover .pill-digit-label,
+.filter-pill-vencimiento:focus-visible .pill-digit-label {
+  display: inline-block;
+}
+
+.reorder-pills-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+}
+
+.sort-select {
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  outline: none;
+  cursor: pointer;
+}
+
+/* Card Quick Toggles */
+.card-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.card-quick-actions:empty {
+  display: none;
+}
+
+.card-quick-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-light);
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  min-height: 32px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+
+.card-quick-toggle:active {
+  transform: scale(0.97);
+}
+
+.card-quick-toggle:hover {
+  background-color: var(--bg-card);
+  border-color: var(--border-light);
+}
+
+/* SÍ (Active) State - Crisp Green */
+.card-quick-toggle.is-active-si {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.card-quick-toggle.is-active-si .toggle-switch-track {
+  background-color: #10b981;
+}
+
+.card-quick-toggle.is-active-si .toggle-switch-thumb {
+  transform: translateX(12px);
+  background-color: #ffffff;
+}
+
+.card-quick-toggle.is-active-si .toggle-status-text {
+  color: #059669;
+}
+
+[data-theme="dark"] .card-quick-toggle.is-active-si {
+  background-color: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+[data-theme="dark"] .card-quick-toggle.is-active-si .toggle-status-text {
+  color: #34d399;
+}
+
+/* NO (Inactive) State - Crisp Red Accent */
+.card-quick-toggle.is-inactive-no {
+  background-color: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.card-quick-toggle.is-inactive-no .toggle-switch-track {
+  background-color: #ef4444;
+}
+
+.card-quick-toggle.is-inactive-no .toggle-switch-thumb {
+  transform: translateX(0px);
+  background-color: #ffffff;
+}
+
+.card-quick-toggle.is-inactive-no .toggle-status-text {
+  color: #dc2626;
+}
+
+[data-theme="dark"] .card-quick-toggle.is-inactive-no {
+  background-color: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-theme="dark"] .card-quick-toggle.is-inactive-no .toggle-status-text {
+  color: #f87171;
+}
+
+.toggle-switch-track {
+  width: 28px;
+  height: 16px;
+  background-color: var(--border-light);
+  border-radius: 12px;
+  position: relative;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.toggle-switch-thumb {
+  width: 12px;
+  height: 12px;
+  background-color: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.card-quick-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.toggle-status-text {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  min-width: 18px;
+}
+
+.toggle-stamp-sub {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.85;
+  margin-left: 2px;
+}
+
+.card-toggle-btn.active-si {
+  background-color: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+.card-toggle-btn.active-no {
+  background-color: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+/* Screen Navigation Tabs (Lista de Clientes vs Resumen de Vencimientos) */
+.screen-nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-light);
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 20px;
+}
+
+.screen-nav-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background-color: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.screen-nav-tab:hover {
+  color: var(--text-main);
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.screen-nav-tab.active {
+  background-color: var(--bg-card);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border-light);
+}
+
+/* User Stamps & Assignment Badges on Client Card */
+.stamps-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.assigned-user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  background-color: var(--primary-light, rgba(37, 99, 235, 0.1));
+  color: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.user-stamp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
+}
+
+.user-stamp-badge.presentado {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.user-stamp-badge.archivado {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+  border-color: rgba(99, 102, 241, 0.25);
+}
+
+/* Summary Dashboard Panel & Table */
+.summary-panel {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.summary-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.summary-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.summary-table th {
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-weight: 700;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+
+.summary-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+.summary-table tr:last-child td {
+  border-bottom: none;
+}
+
+.summary-table tr.total-row {
+  background-color: var(--bg-card-hover);
+  font-weight: 700;
+}
+
+.progress-bar-bg {
+  width: 80px;
+  height: 6px;
+  background-color: var(--border-light);
+  border-radius: 3px;
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--success);
+  border-radius: 3px;
+}
+
+/* Modal Overlay & Card */
+.team-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.team-modal {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  max-width: 460px;
+  width: 100%;
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.team-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.team-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.team-modal-close:hover {
+  color: var(--text-main);
+}
+
+.team-member-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-card-hover);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+
+@media (max-width: 640px) {
+  /* Enforce 16px font-size on mobile inputs to prevent iOS automatic zoom */
+  input[type="text"],
+  input[type="search"],
+  select,
+  textarea,
+  .search-input,
+  .field-input,
+  .select-input,
+  .picker-search-input {
+    font-size: 16px !important;
+  }
+
+  .screen {
+    padding: 10px 10px calc(28px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  .app-navbar {
+    padding: calc(6px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 10px 6px;
+  }
+
+  .navbar-content {
+    padding: 0;
+  }
+
+  /* Con el logo/texto "Control Clientes" oculto en mobile (via
+     .hide-mobile en App.jsx), .nav-pills pasa a ocupar todo el ancho
+     disponible. El toggle de tema se oculta acá (.hide-mobile) porque
+     vive adentro del menú hamburguesa (izquierda): así la píldora de
+     período (el mes) queda centrada y bien visible, con el botón de
+     menú a la izquierda y la píldora de usuario a la derecha. */
+  .nav-pills {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-badge {
+    font-size: 14px;
+    gap: 6px;
+  }
+
+  .brand-icon-wrapper {
+    width: 28px;
+    height: 28px;
+  }
+
+  .brand-icon-wrapper svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .pill-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  /* La píldora de período pasa a ser el elemento protagonista de la
+     barra en mobile: ocupa el espacio disponible y se centra. */
+  .period-pill {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  /* Nombres largos ya no rompen a 2 líneas contra el borde: se truncan
+     con "..." y el pill de usuario queda siempre en una sola línea. */
+  .nav-user-name {
+    max-width: 92px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-avatar-badge-static {
+    display: none;
+  }
+
+  .mobile-nav-left {
+    display: flex;
+  }
+
+  .mobile-nav-logo {
+    display: block;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  .screen-header {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .screen-title {
+    font-size: 17px;
+  }
+
+  .screen-nav-tabs {
+    padding: 3px;
+    gap: 3px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-md);
+  }
+
+  .screen-nav-tab {
+    padding: 6px 8px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
+  .list-actions {
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .search-input {
+    padding: 8px 30px 8px 32px;
+    min-height: 38px;
+  }
+
+  .search-icon {
+    left: 10px;
+    width: 15px;
+    height: 15px;
+  }
+
+  .btn-primary {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-height: 38px;
+  }
+
+  /* --- Filtros como bottom-sheet en mobile ---
+     .filters-panel-wrapper es el contenedor que en desktop no hace nada
+     (los filtros quedan inline, como siempre). Acá abajo se convierte en
+     una capa fija con backdrop + hoja deslizable desde abajo, para que no
+     ocupe toda la pantalla apenas se entra a la lista. */
+  .mobile-filters-trigger {
+    display: inline-flex;
+  }
+
+  /* Oculta info redundante en mobile (ej: el período repetido, que ya
+     está en la píldora del navbar) sin tocar nada en desktop. */
+  .hide-mobile {
+    display: none !important;
+  }
+
+  .filters-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    z-index: 60;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .filters-panel-wrapper.is-open .filters-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Compact Filter Controls Card for Mobile.
+     El transform de abrir/cerrar y el drag-to-dismiss ahora los maneja
+     framer-motion directamente (ver el motion.div en ClientList.jsx),
+     así que acá ya NO va "transform" ni "transition: transform" -- si
+     quedan los dos (CSS + framer-motion) compitiendo por la misma
+     propiedad, el resultado es un tironeo/microcorte en vez de una
+     animación fluida. */
+  .filter-controls-card {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 61;
+    max-height: 78vh;
+    overflow-y: auto;
+    margin-bottom: 0;
+    padding: 0 14px calc(16px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+    gap: 6px;
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Barrita de agarre real (ya no es ::before): acá es donde arranca el
+     gesto de arrastre para cerrar el panel. */
+  .filter-drag-handle {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 8px;
+    margin: 0 -14px;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .filter-drag-handle-bar {
+    width: 36px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background-color: var(--border-light);
+  }
+
+  .filters-sheet-header {
+    display: flex;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  /* El botón de cerrar necesita su comportamiento normal de click, sin
+     heredar el touch-action:none del header (que es solo para el
+     gesto de arrastre). */
+  .filters-sheet-close {
+    touch-action: auto;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .filter-label {
+    min-width: auto;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .filter-pills {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    width: 100%;
+    padding-bottom: 4px;
+    gap: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .filter-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-pill {
+    padding: 3px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .sort-select {
+    padding: 3px 8px;
+    font-size: 11px;
+    height: 32px;
+  }
+
+  /* Compact Client Card & Quick Toggles for Mobile */
+  .client-list {
+    gap: 8px;
+  }
+
+  .client-card {
+    padding: 10px 12px;
+    gap: 8px;
+    border-radius: var(--radius-sm);
+  }
+
+  .client-info {
+    gap: 10px;
+  }
+
+  .client-avatar-default {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+  }
+
+  .client-name {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
+  .client-card-chevron {
+    width: 16px;
+    height: 16px;
+  }
+
+  .swipe-hint-bar {
+    padding: 4px 8px;
+    font-size: 10px;
+    margin-bottom: 6px;
+  }
+
+  .stamps-row {
+    gap: 4px;
+  }
+
+  .user-stamp-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  .assigned-user-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  .card-quick-actions {
+    gap: 4px;
+    margin-top: 2px;
+  }
+
+  .card-quick-group {
+    padding: 2px 6px;
+    gap: 4px;
+    border-radius: var(--radius-sm);
+  }
+
+  .card-quick-label {
+    font-size: 10px;
+  }
+
+  .card-toggle-btn {
+    padding: 2px 6px;
+    font-size: 10px;
+    min-height: 24px;
+  }
+
+  .card-toggle-btn svg {
+    width: 10px;
+    height: 10px;
+  }
+
+  .hero-card {
+    padding: 16px 12px;
+  }
+
+  .picker-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .picker-btn {
+    padding: 10px 8px;
+    min-height: 42px;
+  }
+
+  .year-row-btn {
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .field-card {
+    padding: 10px;
+  }
+
+  .field-input-row {
+    gap: 6px;
+  }
+
+  .field-input {
+    height: 38px;
+  }
+
+  .field-save-btn {
+    height: 38px;
+    padding: 0 12px;
+    min-width: 70px;
+    font-size: 12px;
+  }
+
+  .yesno-toggle-btn {
+    min-height: 38px;
+    font-size: 12px;
+  }
+
+  .select-input {
+    height: 38px;
+  }
+
+  .client-detail-header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .client-detail-avatar {
+    width: 38px;
+    height: 38px;
+  }
+
+  .client-detail-title {
+    font-size: 16px;
+  }
+
+  .bottom-submit-bar {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .bottom-submit-bar .btn-primary,
+  .bottom-submit-bar .btn-secondary {
+    width: 100%;
+    min-height: 42px;
+    font-size: 13px;
+  }
+
+  /* Pantalla "Asignar clientes" en mobile: el nombre y el control
+     (select o "encargado actual") competían por la misma fila angosta y
+     el nombre se cortaba con "...". Acá se apilan: el nombre arriba con
+     todo su ancho disponible (puede pasar a 2 líneas si hace falta), el
+     control abajo ocupando todo el ancho también. */
+  .assign-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .assign-row-name {
+    white-space: normal;
+    font-size: 13px;
+  }
+
+  .assign-row-control {
+    justify-content: flex-end;
+  }
+
+  .assign-row-control .sort-select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Los pills de "Estado"/"Vencimiento" con nombres largos (ej. "ANTONIO
+     GONZALEZ") necesitan más aire entre líneas al envolver, si no se
+     ven amontonados. */
+  .assign-controls .filter-pills {
+    row-gap: 8px;
+  }
+}
+
+@media (max-width: 440px) {
+  .list-actions {
+    flex-direction: column;
+  }
+
+  .btn-primary {
+    width: 100%;
+  }
+
+  /* En este ancho .list-actions pasa a columna: el botón de Filtros debe
+     acompañar ese mismo comportamiento para no quedar angosto y perdido
+     al lado de "Nuevo Cliente" apilado a ancho completo. */
+  .mobile-filters-trigger {
+    width: 100%;
+    justify-content: center;
+    height: 40px;
+  }
+
+  .picker-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+

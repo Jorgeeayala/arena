@@ -1,0 +1,173 @@
+import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
+import { api } from '../api';
+import { Layers, AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+      delayChildren: 0.05,
+    },
+  },
+};
+
+const tileVariants = {
+  hidden: { opacity: 0, scale: 0.88, y: 12 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: 'spring', stiffness: 380, damping: 24 },
+  },
+};
+
+export default function MonthPicker({ year, onPick, onChangeYear }) {
+  const [months, setMonths] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  function loadMonths(force = false) {
+    setLoading(true);
+    setError('');
+    api
+      .listMonths(year, force)
+      .then(setMonths)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+    setError('');
+    api
+      .listMonths(year)
+      .then((data) => {
+        if (isMounted) setMonths(data);
+      })
+      .catch((err) => {
+        if (isMounted) setError(err.message);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [year]);
+
+  return (
+    <div className="screen centered">
+      <motion.div
+        className="hero-card"
+        initial={{ opacity: 0, y: 20, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 26 }}
+      >
+        <motion.div
+          className="picker-icon-box"
+          initial={{ scale: 0, rotate: -15 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 20, delay: 0.1 }}
+        >
+          <Layers size={28} />
+        </motion.div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
+          <h1 className="picker-title" style={{ margin: 0 }}>Mes de {year}</h1>
+          <motion.button
+            className="back-btn"
+            style={{ padding: '6px', borderRadius: '50%', minHeight: 'unset' }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => loadMonths(true)}
+            title="Buscar nuevas hojas de meses en Google Sheets"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </motion.button>
+        </div>
+        <p className="picker-subtitle">
+          Seleccioná la hoja mensual sobre la que vas a trabajar.
+        </p>
+
+        {loading && (
+          <div className="skeleton-container" style={{ margin: '0 auto' }}>
+            <div className="skeleton-item" />
+            <div className="skeleton-item" />
+            <div className="skeleton-item" />
+          </div>
+        )}
+
+        {error && (
+          <motion.div
+            className="error-banner"
+            style={{ textAlign: 'left' }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <AlertCircle size={20} style={{ flexShrink: 0 }} />
+            <div>
+              <strong>Error de conexión</strong>
+              <div style={{ fontSize: '13px', marginTop: '2px' }}>{error}</div>
+              <motion.button
+                className="btn-secondary"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.95 }}
+                style={{ marginTop: '10px', padding: '6px 12px', fontSize: '13px' }}
+                onClick={loadMonths}
+              >
+                <RefreshCw size={14} /> Reintentar
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+
+        {!loading && !error && (
+          <motion.div
+            className="picker-grid"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            {months.map((m) => (
+              <motion.button
+                key={m}
+                className="picker-btn"
+                variants={tileVariants}
+                whileHover={{ scale: 1.05, y: -2 }}
+                whileTap={{ scale: 0.94 }}
+                onClick={() => onPick(m)}
+                onMouseEnter={() => api.readClients(year, m)}
+              >
+                <span style={{ fontSize: '15px', fontWeight: 700 }}>{m}</span>
+              </motion.button>
+            ))}
+          </motion.div>
+        )}
+
+        {!loading && !error && months.length === 0 && (
+          <div className="error-banner">
+            <AlertCircle size={18} />
+            <span>No hay hojas de meses cargadas en la planilla de {year}.</span>
+          </div>
+        )}
+      </motion.div>
+
+      {onChangeYear && (
+        <motion.button
+          className="back-btn"
+          whileHover={{ scale: 1.03, x: -2 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onChangeYear}
+        >
+          <ArrowLeft size={14} />
+          <span>Cambiar año ({year})</span>
+        </motion.button>
+      )}
+    </div>
+  );
+}
+
