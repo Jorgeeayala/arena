@@ -260,7 +260,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-<<<<<<< Updated upstream
   overflow: hidden;
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
@@ -271,11 +270,6 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
-=======
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
-  overflow: hidden;
-  flex-shrink: 0;
->>>>>>> Stashed changes
 }
 
 .nav-pills {
@@ -1049,10 +1043,21 @@ body {
   border-color: rgba(34, 197, 94, 0.55);
 }
 
-.assign-row-current {
+/* Selector de encargado de cada fila (reemplazó al texto de solo lectura:
+   ahora se puede asignar a cualquiera del equipo, participe o no del
+   reparto). Hereda el cromo de .sort-select y se le acota el ancho para que
+   no se coma la fila: el nombre del cliente sigue siendo el protagonista. */
+.assign-row-select {
+  min-width: 132px;
+  max-width: 190px;
+  padding: 5px 8px;
   font-size: 12px;
+}
+
+/* Sin encargado: apagado y en cursiva, mismo tratamiento que tenía el texto. */
+.assign-row-select.is-empty {
   color: var(--text-subtle);
-  white-space: nowrap;
+  font-style: italic;
 }
 
 /* Agrupación visual por vencimiento (para ver el ciclo del round-robin) */
@@ -1581,45 +1586,195 @@ body {
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
 }
 
-/* Vencimiento filter pill: swaps from "Día X" to digit index (0, 1, 2...) on hover */
-.filter-pill-vencimiento {
-  min-width: 58px;
+/* Número de posición del equipo dentro del reparto automático. Va SIEMPRE
+   renderizado (no aparece/desaparece con hover) para que el pill no cambie
+   de tamaño, y es texto puro: sin íconos ni handle de arrastre. */
+.pill-order-num {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background-color: var(--primary-light, rgba(37, 99, 235, 0.12));
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.filter-pill.active .pill-order-num {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* Pills del equipo (los que se arrastran para ordenar el reparto).
+   touch-action: pan-y deja que la página siga scrolleando en vertical
+   aunque el dedo arranque arriba de un pill -- el arrastre nuestro es
+   horizontal, así las dos cosas conviven y nada queda trabado. */
+.team-pill {
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+
+/* Hueco que deja el nombre mientras se lo arrastra: sigue ocupando SU lugar
+   en la fila (así se ve dónde va a caer) pero atenuado. Solo cambia color y
+   opacidad, nunca el tamaño, para que la fila no salte. */
+.filter-pill.drag-origin {
+  opacity: 0.35;
+  border-style: dashed;
+  border-color: var(--primary);
+  cursor: grabbing;
+}
+
+/* Nombre que está debajo del puntero mientras se arrastra: es el que va a
+   intercambiar posición al soltar. Solo pinta borde/sombra, nunca tamaño,
+   así la fila no salta mientras el dedo se mueve por encima. */
+.filter-pill.swap-target {
+  border-color: var(--primary);
+  border-style: dashed;
+  color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light, rgba(37, 99, 235, 0.18));
+}
+
+/* Usuario que NO participa del reparto: se ve apagado y con el guion en vez
+   del número. Mismo tamaño de caja que los demás, así la fila no salta al
+   incluirlo o sacarlo. */
+.filter-pill.not-participant {
+  opacity: 0.45;
+  border-style: dashed;
+  text-decoration: line-through;
+}
+
+/* Botón de texto (sin íconos) para entrar/salir del modo participantes.
+   Usa el mismo cromo que los pills de la misma caja (.filter-pill /
+   .pill-btn) —fondo de tarjeta, borde redondeado total, igual padding y
+   tipografía— para que se lea como parte de la fila y no como un link
+   suelto. Todo por variables, así el tema oscuro queda cubierto. */
+.reorder-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.reorder-mode-btn:hover {
+  border-color: var(--border-focus);
+  color: var(--text-main);
+}
+
+/* Modo participantes activo: el mismo resaltado suave de los pills
+   activos (.pill-btn.active), no el sólido de .filter-pill.active, para
+   que no compita con la selección de un nombre. */
+.reorder-mode-btn.active {
+  background-color: var(--primary-light);
+  border-color: var(--primary-border);
+  color: var(--primary);
+}
+
+/* El conteo va en segundo plano respecto de la palabra "Participantes",
+   misma jerarquía que el número de los pills. */
+.reorder-mode-btn .mode-count {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* Clon del nombre que sigue al dedo/mouse durante el arrastre. Vive en un
+   portal sobre document.body y se mueve por transform (GPU), así no
+   re-renderiza React en cada pixel del gesto. pointer-events:none para que
+   no intercepte clicks ni scroll mientras vuela. */
+.team-pill-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--primary);
+  background-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.4);
+  white-space: nowrap;
+  will-change: transform;
+  transform: translate3d(-9999px, -9999px, 0);
+}
+
+.team-pill-ghost .pill-order-num {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* Vencimiento filter pill: al pasar el mouse cambia de "Día X" al número de
+   terminación (0, 1, 2...).
+
+   IMPORTANTE: el pill NO puede cambiar de tamaño al hacer hover. Las dos
+   etiquetas viven en la MISMA celda de una grilla (grid-area: 1 / 1) y sólo
+   se cruzan con opacidad, así la caja la define siempre la más grande de las
+   dos. Antes se intercambiaban con display:none / inline-block y el pill
+   saltaba: la terminación usa 13px contra 12px del "Día X" (con line-height
+   1.5 son 19.5px contra 18px de alto) y el texto es mucho más corto, así que
+   además podía estrecharse cuando "Día NN" superaba el min-width. */
+.filter-pill-vencimiento {
+  display: inline-grid;
+  place-items: center;
+  min-width: 58px;
   text-align: center;
   position: relative;
 }
 
+.filter-pill-vencimiento .pill-day-label,
+.filter-pill-vencimiento .pill-digit-label {
+  grid-area: 1 / 1; /* misma celda: ninguna de las dos empuja el layout */
+}
+
 .filter-pill-vencimiento .pill-day-label {
-  display: inline-block;
-  transition: transform 0.12s ease, opacity 0.12s ease;
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
 .filter-pill-vencimiento .pill-digit-label {
-  display: none;
   font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.02em;
-  transform: scale(1.05);
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
 .filter-pill-vencimiento:hover .pill-day-label,
 .filter-pill-vencimiento:focus-visible .pill-day-label {
-  display: none;
+  opacity: 0;
+  transform: scale(0.9);
 }
 
 .filter-pill-vencimiento:hover .pill-digit-label,
 .filter-pill-vencimiento:focus-visible .pill-digit-label {
-  display: inline-block;
+  opacity: 1;
+  transform: scale(1.05);
 }
 
-.reorder-pills-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  padding: 0;
-  margin: 0;
-}
+
 
 .sort-select {
   padding: 5px 12px;
@@ -1841,6 +1996,85 @@ body {
   background-color: var(--primary-light, rgba(37, 99, 235, 0.1));
   color: var(--primary);
   border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+/* Mismo badge pero para clientes que todavía no tienen encargado real en
+   la planilla: neutro, para que no se confunda con una asignación. */
+.assigned-user-badge-empty {
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  border: 1px dashed var(--border-light);
+  font-weight: 600;
+  font-style: italic;
+}
+
+/* Encargado editable directamente en la tarjeta de la lista. Se ve igual
+   que el badge de antes (misma píldora, mismos colores) pero es un <select>:
+   así se puede asignar a cualquiera del equipo —participe o no del reparto—
+   sin cambiar de pantalla. */
+.card-encargado-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  color: var(--primary);
+}
+
+.card-encargado-select {
+  max-width: 165px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  background-color: var(--primary-light, rgba(37, 99, 235, 0.1));
+  color: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  cursor: pointer;
+  outline: none;
+}
+
+/* Sin encargado: mismo tratamiento neutro que el badge vacío. */
+.card-encargado-select.is-empty {
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  border: 1px dashed var(--border-light);
+  font-weight: 600;
+  font-style: italic;
+}
+
+.card-encargado-select:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Botón Marangatu en la tarjeta: logo sobre fondo blanco, como pide el
+   diseño. Compacto para no desbalancear la fila de acciones rápidas. */
+.marangatu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background-color: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: box-shadow 0.1s ease, transform 0.1s ease;
+}
+
+.marangatu-btn:hover {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+/* El logo original es alto (isotipo + texto); lo recortamos al isotipo con
+   object-fit para que el botón quede cuadrado y prolijo. */
+.marangatu-logo {
+  height: 24px;
+  width: 24px;
+  object-fit: cover;
+  object-position: 50% 18%;
+  display: block;
+  border-radius: 4px;
 }
 
 .user-stamp-badge {
@@ -2278,6 +2512,13 @@ body {
     font-size: 11px;
     white-space: nowrap;
     flex-shrink: 0;
+  }
+
+  /* Acompaña el mismo achique que los pills de al lado, para que el botón
+     "Participantes" no quede más grande que la fila que comanda. */
+  .reorder-mode-btn {
+    padding: 3px 8px;
+    font-size: 11px;
   }
 
   .sort-select {

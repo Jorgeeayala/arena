@@ -1,13 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { api } from '../api';
-import {
-  pickNameColumn,
-  findEncargadoColumn,
-  findVencimientoColumn,
-  assignClientsSequentially,
-  formatPeriodLabel,
-} from '../utils';
+import { useClients } from '../context/ClientsContext';
+import { formatPeriodLabel } from '../utils';
 import {
   ArrowLeft,
   Search,
@@ -18,9 +13,10 @@ import {
   CheckCircle2,
   Calendar,
   Shuffle,
-  X,
+  XCircle,
   Undo2,
   UserX,
+  UserCheck,
 } from 'lucide-react';
 
 const listVariants = {
@@ -36,114 +32,239 @@ const rowVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.15 } },
 };
 
-export default function AssignClients({ user, year, month, onBack }) {
-  const [headers, setHeaders] = useState([]);
-  const [rows, setRows] = useState([]);
-  const [teamUsers, setTeamUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
-  const [savingRow, setSavingRow] = useState(null);
-  const [savedRow, setSavedRow] = useState(null);
+export default function AssignClients({ onBack }) {
+  // Todo el estado de la planilla (datos, equipo, filtros y guardado) viene
+  // del contexto compartido con ClientList: lo que se cambia acá se ve allá
+  // al instante, y viceversa, porque es literalmente el mismo estado.
+  const {
+    user,
+    year,
+    month,
+    rows,
+    assignedRows,
+    suggestRoundRobin,
+    loading,
+    error,
+    teamUsers,
+    repartoUsers,
+    toggleParticipant,
+    swapTeamMembers,
+    nameKey,
+    encargadoCol,
+    vencimientoKey,
+    availableVencimientos,
+    getVencimientoDay,
+    unassignedCount,
+    primaryStatusHeader,
+    // filtros compartidos
+    query,
+    setQuery,
+    selectedVencimiento,
+    setSelectedVencimiento,
+    selectedStatus,
+    setSelectedStatus,
+    selectedAssignee,
+    setSelectedAssignee,
+    sortBy,
+    applySharedFilters,
+    clearFilters,
+    hasActiveFilters,
+    // escritura compartida
+    savingRows,
+    savedRows,
+    setEncargado,
+    queueCellUpdate,
+    flushPendingSaves,
+    applyBulkUpdates,
+  } = useClients();
 
-  const [selectedVencimiento, setSelectedVencimiento] = useState('todos');
-  const [selectedStatus, setSelectedStatus] = useState('todos'); // 'todos' | 'sin_asignar' | nombre de usuario
+  const [undoing, setUndoing] = useState(false);
+  // Historial de cambios para permitir revertir (local a esta pantalla: es
+  // una comodidad de edición, no un dato de la planilla)
+  const [history, setHistory] = useState([]); // Array<{ rowNum, prevUser, newUser, clientName }>
 
   // Modo asignación rápida / toque: elegís un usuario activo o "desasignar"
   // y vas tocando clientes para asignar o desasignar al instante sin selectores
   const [activeAssignee, setActiveAssignee] = useState(null); // string (user) | '__unassign__' | null
 
-  // Historial de cambios para permitir revertir
-  const [history, setHistory] = useState([]); // Array<{ rowNum, prevUser, newUser, clientName }>
-  const [undoing, setUndoing] = useState(false);
+  // --- Orden del reparto: se cambia ARRASTRANDO los nombres ---
+  //
+  // Sin grip y sin drag-and-drop nativo del navegador (que en touch
+  // directamente no funciona). Son pointer events con un umbral de
+  // movimiento, así las dos cosas conviven en el mismo pill:
+  //   - toque corto  -> activa el modo "asignar a esta persona" (como antes)
+  //   - arrastre     -> mueve ese nombre a otra posición del reparto
+  //
+  // Para que NO se trabe nada: el pointer capture se toma recién cuando el
+  // arrastre ya empezó (no en el pointerdown), los pills siguen dejando
+  // pasar el scroll vertical de la página (touch-action: pan-y en el CSS) y
+  // el reordenamiento es local e instantáneo, sin red de por medio.
+  const pillRefs = useRef(new Map());
+  const dragState = useRef(null); // { user, startX, startY, pointerId, active }
+  const suppressClick = useRef(false);
+  const ghostRef = useRef(null); // clon flotante que sigue al dedo/mouse
+  const [draggingUser, setDraggingUser] = useState(null);
+  // Nombre que está debajo del puntero mientras se arrastra. OJO: es solo una
+  // marca visual, el intercambio NO se hace acá (ver endPillDrag).
+  const [dropTarget, setDropTarget] = useState(null);
+  // Modo "quiénes participan del reparto": se ve a TODO el equipo y se toca
+  // para incluir o sacar. Fuera de este modo solo se muestran los que
+  // participan, que son los que se ordenan y los que reciben clientes.
+  const [participantsMode, setParticipantsMode] = useState(false);
+
+  // El clon se mueve tocando el DOM directo (no con state): si se moviera por
+  // state, cada pixel del gesto dispararía un re-render de React y ahí sí se
+  // sentiría trabado.
+  function positionGhost(x, y) {
+    const el = ghostRef.current;
+    if (!el) return;
+    // translate3d para que lo anime la GPU; el segundo translate lo centra
+    // sobre el puntero y lo corre un poco hacia arriba, así el dedo no lo tapa.
+    el.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -160%)`;
+  }
+
+  function hideGhost() {
+    const el = ghostRef.current;
+    if (el) el.style.opacity = '0';
+  }
+
+  function handlePillPointerDown(e, u) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return; // solo botón izquierdo
+    // Un press nuevo siempre arranca limpio: si el arrastre anterior terminó
+    // en pointercancel (nunca llegó su click), el flag no queda pegado.
+    suppressClick.current = false;
+    dragState.current = { user: u, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, active: false };
+  }
+
+  function handlePillPointerMove(e) {
+    const st = dragState.current;
+    if (!st) return;
+
+    if (!st.active) {
+      // Umbral: menos de 6px de recorrido sigue siendo un toque, no un arrastre.
+      if (Math.abs(e.clientX - st.startX) < 6 && Math.abs(e.clientY - st.startY) < 6) return;
+      st.active = true;
+      setDraggingUser(st.user);
+      // Recién acá se captura el puntero: si se tomara en el pointerdown, un
+      // simple intento de scrollear apoyando el dedo sobre un pill quedaría
+      // atrapado -- eso es lo que "trababa" antes.
+      try {
+        e.currentTarget.setPointerCapture?.(st.pointerId);
+      } catch {
+        // si el navegador no lo soporta, el arrastre igual sigue funcionando
+      }
+      setDropTarget(null);
+      const ghost = ghostRef.current;
+      if (ghost) ghost.style.opacity = '1';
+      positionGhost(e.clientX, e.clientY);
+    }
+
+    positionGhost(e.clientX, e.clientY);
+
+    // ¿Sobre qué otro nombre está el puntero? Se MARCA, no se intercambia.
+    // Si se intercambiara acá, arrastrar D hasta A iría swappeando con cada
+    // nombre que se cruza en el camino (D-C, D-B, D-A) y terminaría en
+    // "D A B C" en vez del "D B C A" que uno espera al soltarlo encima de A.
+    let hovered = null;
+    pillRefs.current.forEach((el, other) => {
+      if (!el || other === st.user) return;
+      const r = el.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+        hovered = other;
+      }
+    });
+    st.target = hovered;
+    // setState solo cuando cambia de verdad: si no, re-renderiza en cada pixel.
+    setDropTarget((curr) => (curr === hovered ? curr : hovered));
+  }
+
+  function endPillDrag(e) {
+    const st = dragState.current;
+    dragState.current = null;
+    if (!st || !st.active) return;
+    try {
+      e.currentTarget.releasePointerCapture?.(st.pointerId);
+    } catch {
+      // el capture ya se había liberado solo
+    }
+    setDraggingUser(null);
+    hideGhost();
+
+    // Acá sí: UN intercambio directo entre el que se arrastró y el nombre que
+    // quedó debajo. Los demás no se mueven.
+    //   A B C D  --arrastro D hasta A-->  D B C A
+    if (st.target && st.target !== st.user) {
+      swapTeamMembers(st.user, st.target);
+    }
+    setDropTarget(null);
+    // El click que el navegador dispara al soltar no debe activar el modo
+    // asignar: veníamos arrastrando, no tocando. Lo consume el propio click
+    // (sin timers: el orden entre un setTimeout y el click no está garantizado).
+    suppressClick.current = true;
+  }
+
+  function handleTeamPillClick(u) {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    setActiveAssignee((curr) => (curr === u ? null : u));
+  }
 
   // Confirmación del reparto automático (round-robin)
   const [confirmingRoundRobin, setConfirmingRoundRobin] = useState(false);
   const [roundRobinScope, setRoundRobinScope] = useState('sin_asignar'); // 'sin_asignar' | 'todos'
   const [runningRoundRobin, setRunningRoundRobin] = useState(false);
   const [roundRobinProgress, setRoundRobinProgress] = useState(null); // { done, total }
+  const [actionError, setActionError] = useState('');
 
-  // El reparto automático siempre usa a todo el equipo (teamUsers), en
-  // el orden que venga del backend -- sin checkbox de exclusión ni
-  // reordenamiento manual, para que cada pill haga una sola cosa: tocarla
-  // selecciona a esa persona para asignarle clientes.
-  const roundRobinParticipants = teamUsers;
+  // El reparto automático usa SOLO a los participantes definidos, en el
+  // orden que se les dio arrastrando. Si todavía no se definió nadie,
+  // participan todos (repartoUsers ya resuelve eso).
+  const roundRobinParticipants = repartoUsers;
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError('');
+  // Los que están en el equipo pero NO entran al reparto automático. No
+  // pueden recibir clientes del round-robin, pero SÍ se les puede asignar
+  // a mano cliente por cliente: la lista de participantes acota sólo la
+  // distribución automática, nunca la asignación manual.
+  const nonParticipants = useMemo(
+    () => teamUsers.filter((u) => !repartoUsers.includes(u)),
+    [teamUsers, repartoUsers]
+  );
 
-    Promise.all([api.readClients(year, month), api.listUsers()])
-      .then(([data, users]) => {
-        if (cancelled) return;
-        setHeaders(data.headers || []);
-        setRows(data.rows || []);
-        setTeamUsers(users || []);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message || 'No se pudo cargar la planilla');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [year, month]);
-
-  const nameKey = useMemo(() => pickNameColumn(headers), [headers]);
-  const encargadoCol = useMemo(() => findEncargadoColumn(headers), [headers]);
-  const vencimientoKey = useMemo(() => findVencimientoColumn(headers), [headers]);
-
-  const availableVencimientos = useMemo(() => {
-    if (!vencimientoKey || !rows.length) return [];
-    const set = new Set();
-    rows.forEach((r) => {
-      const raw = String(r[vencimientoKey] || '').trim();
-      if (!raw) return;
-      const digits = raw.match(/\d+/);
-      set.add(digits ? String(parseInt(digits[0], 10)) : raw);
-    });
-    return Array.from(set).sort((a, b) => {
-      const na = parseInt(a, 10);
-      const nb = parseInt(b, 10);
-      if (!isNaN(na) && !isNaN(nb)) return na - nb;
-      return a.localeCompare(b);
-    });
-  }, [vencimientoKey, rows]);
-
-  function getVencimientoDay(row) {
-    if (!vencimientoKey) return 'Sin vencimiento';
-    const raw = String(row[vencimientoKey] || '').trim();
-    if (!raw) return 'Sin vencimiento';
-    const digits = raw.match(/\d+/);
-    return digits ? String(parseInt(digits[0], 10)) : raw;
-  }
+  // Un cliente está "protegido" del reparto automático cuando ya lo tiene
+  // alguien que NO participa: se asignó a mano a propósito y no hay que
+  // pisarlo. Se usa tanto para filtrar el reparto como para avisar en la
+  // confirmación cuántos quedan afuera.
+  const isProtectedRow = useCallback(
+    (r) => {
+      if (!encargadoCol) return false;
+      const cur = String(r[encargadoCol] || '').trim();
+      return !!cur && !roundRobinParticipants.includes(cur);
+    },
+    [encargadoCol, roundRobinParticipants]
+  );
 
   const filteredRows = useMemo(() => {
-    let list = [...rows].sort((a, b) =>
-      String(a[nameKey] || '').localeCompare(String(b[nameKey] || ''), 'es', { sensitivity: 'base' })
-    );
+    // Mismo criterio de filtrado que la lista principal (contexto
+    // compartido): búsqueda + vencimiento + estado + encargado.
+    const list = applySharedFilters(assignedRows);
 
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      list = list.filter((r) => String(r[nameKey] || '').toLowerCase().includes(q));
-    }
-
-    if (selectedVencimiento !== 'todos' && vencimientoKey) {
-      list = list.filter((r) => getVencimientoDay(r) === selectedVencimiento);
-    }
-
-    if (selectedStatus === 'sin_asignar') {
-      list = list.filter((r) => !r[encargadoCol]);
-    } else if (selectedStatus !== 'todos') {
-      list = list.filter((r) => r[encargadoCol] === selectedStatus);
-    }
-
-    return list;
-  }, [rows, nameKey, query, selectedVencimiento, vencimientoKey, selectedStatus, encargadoCol]);
+    // Orden: respeta la opción de orden elegida en la lista de clientes.
+    return list.sort((a, b) => {
+      if (sortBy === 'vencimiento' && vencimientoKey) {
+        const numA = parseInt(getVencimientoDay(a), 10);
+        const numB = parseInt(getVencimientoDay(b), 10);
+        const na = isNaN(numA) ? 999 : numA;
+        const nb = isNaN(numB) ? 999 : numB;
+        if (na !== nb) return na - nb;
+      }
+      return String(a[nameKey] || '').localeCompare(String(b[nameKey] || ''), 'es', {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    });
+  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, getVencimientoDay, nameKey]);
 
   // Vista agrupada por vencimiento: se arma solo cuando tiene sentido
   // verla (viendo "Todos los vencimientos", sin buscar nada puntual) y
@@ -172,20 +293,23 @@ export default function AssignClients({ user, year, month, onBack }) {
         // ve acá coincide con cómo se reparte de verdad.
         rows: [...groups.get(day)].sort((a, b) => (a._row || 0) - (b._row || 0)),
       }));
-  }, [filteredRows, vencimientoKey, selectedVencimiento, query, availableVencimientos]);
-
-  const unassignedCount = useMemo(
-    () => rows.filter((r) => !r[encargadoCol]).length,
-    [rows, encargadoCol]
-  );
+  }, [filteredRows, vencimientoKey, selectedVencimiento, query, availableVencimientos, getVencimientoDay]);
 
   // Mismo conteo pero solo dentro de lo que está filtrado ahora (ej: si
   // filtraste "Día 7", cuenta sin asignar de ese día nomás) -- así el
   // número que se ve en el botón de reparto coincide con lo que en
   // realidad se va a repartir.
   const filteredUnassignedCount = useMemo(
-    () => filteredRows.filter((r) => !r[encargadoCol]).length,
+    () => filteredRows.filter((r) => !String(r[encargadoCol] || '').trim()).length,
     [filteredRows, encargadoCol]
+  );
+
+  // Cuántos clientes del alcance actual quedarían intactos por estar ya
+  // asignados a alguien que no participa. Se muestra en la confirmación para
+  // que "Reasignar todos" no sorprenda: no son todos los de la lista.
+  const protectedCount = useMemo(
+    () => filteredRows.filter(isProtectedRow).length,
+    [filteredRows, isProtectedRow]
   );
 
   async function assignRow(row, targetUser) {
@@ -194,14 +318,6 @@ export default function AssignClients({ user, year, month, onBack }) {
     const prevValue = row[encargadoCol] || '';
     if (prevValue === valueToSave) return; // ya tiene ese valor
 
-    // Optimista: se pinta/despinta al toque, sin esperar la red. Antes
-    // esto esperaba el await de api.updateCell (que además tiene ~300ms
-    // de debounce interno en la cola de guardado) antes de tocar el
-    // estado -- cada tap en modo rápido se sentía con demora. Ahora la
-    // UI reacciona al instante y, si el guardado falla, se revierte.
-    setRows((prev) =>
-      prev.map((r) => (r._row === row._row ? { ...r, [encargadoCol]: valueToSave } : r))
-    );
     setHistory((prev) => [
       {
         rowNum: row._row,
@@ -211,28 +327,14 @@ export default function AssignClients({ user, year, month, onBack }) {
       },
       ...prev.slice(0, 30), // guardar hasta 30 acciones en historial
     ]);
-    setSavedRow(row._row);
-    setTimeout(() => setSavedRow((r) => (r === row._row ? null : r)), 1000);
 
-    setSavingRow(row._row);
     try {
-      await api.updateCell({
-        year,
-        sheet: month,
-        user,
-        row: row._row,
-        column: encargadoCol,
-        value: valueToSave,
-      });
+      // setEncargado pinta el cambio al instante en el estado compartido
+      // (se ve también en la lista de clientes) y revierte si falla.
+      await setEncargado(row._row, valueToSave);
     } catch (err) {
-      // Revertir: el guardado no se pudo confirmar en el servidor
-      setRows((prev) =>
-        prev.map((r) => (r._row === row._row ? { ...r, [encargadoCol]: prevValue } : r))
-      );
       setHistory((prev) => prev.filter((h) => h.rowNum !== row._row || h.newUser !== valueToSave));
-      setError(err.message || 'No se pudo guardar la asignación');
-    } finally {
-      setSavingRow(null);
+      setActionError(err.message || 'No se pudo guardar la asignación');
     }
   }
 
@@ -257,43 +359,35 @@ export default function AssignClients({ user, year, month, onBack }) {
     if (!history.length || undoing || !encargadoCol) return;
     const lastAction = history[0];
     setUndoing(true);
-    setSavingRow(lastAction.rowNum);
     try {
-      await api.updateCell({
-        year,
-        sheet: month,
-        user,
-        row: lastAction.rowNum,
-        column: encargadoCol,
-        value: lastAction.prevUser,
-      });
-      setRows((prev) =>
-        prev.map((r) => (r._row === lastAction.rowNum ? { ...r, [encargadoCol]: lastAction.prevUser } : r))
-      );
+      await setEncargado(lastAction.rowNum, lastAction.prevUser);
       setHistory((prev) => prev.slice(1));
-      setSavedRow(lastAction.rowNum);
-      setTimeout(() => setSavedRow((r) => (r === lastAction.rowNum ? null : r)), 1000);
     } catch (err) {
-      setError(err.message || 'No se pudo revertir el cambio');
+      setActionError(err.message || 'No se pudo revertir el cambio');
     } finally {
       setUndoing(false);
-      setSavingRow(null);
     }
   }
 
   async function runRoundRobin() {
     if (!encargadoCol || !roundRobinParticipants.length) return;
     setRunningRoundRobin(true);
-    setError('');
+    setActionError('');
     try {
-      // El scope parte de lo que ya está filtrado en pantalla (respeta el
-      // filtro de Vencimiento activo: si estás viendo "Día 7", el reparto
-      // es solo para Día 7, no para toda la planilla) y encima se aplica
-      // "solo sin asignar" o "todos" según lo elegido.
+      // El scope parte de lo que ya está filtrado en pantalla (respeta los
+      // filtros compartidos: vencimiento, búsqueda, estado...) y encima se
+      // aplica "solo sin asignar" o "todos" según lo elegido.
       const baseScope = filteredRows;
+      // Con alcance "todos" NO se pisa lo que ya está asignado a alguien que
+      // no participa del reparto: eso fue una decisión manual (ej. "este
+      // cliente no lo puede hacer el que lo recibió, dáselo a otro de afuera")
+      // y el automático la respeta. Los vacíos y los que ya tiene un
+      // participante sí se reparten.
       const targets =
-        roundRobinScope === 'todos' ? baseScope : baseScope.filter((r) => !r[encargadoCol]);
-      const suggestions = assignClientsSequentially(targets, vencimientoKey, roundRobinParticipants);
+        roundRobinScope === 'todos'
+          ? baseScope.filter((r) => !isProtectedRow(r))
+          : baseScope.filter((r) => !String(r[encargadoCol] || '').trim());
+      const suggestions = suggestRoundRobin(targets);
       const total = suggestions.length;
       setRoundRobinProgress({ done: 0, total });
 
@@ -308,10 +402,7 @@ export default function AssignClients({ user, year, month, onBack }) {
 
         await Promise.all(
           chunk.map((row) =>
-            api.updateCell({
-              year,
-              sheet: month,
-              user,
+            queueCellUpdate({
               row: row._row,
               column: encargadoCol,
               value: row._assignedUser,
@@ -321,23 +412,30 @@ export default function AssignClients({ user, year, month, onBack }) {
         // Fuerza a que ESTE lote salga ya (no espera a mezclarse con el
         // siguiente), así el progreso que se muestra es real, no
         // optimista solamente.
-        await api.flushPendingSaves();
+        await flushPendingSaves();
 
-        const chunkMap = new Map(chunk.map((r) => [r._row, r._assignedUser]));
-        setRows((prev) =>
-          prev.map((r) => (chunkMap.has(r._row) ? { ...r, [encargadoCol]: chunkMap.get(r._row) } : r))
+        const chunkUpdates = new Map(
+          chunk.map((r) => [r._row, { [encargadoCol]: r._assignedUser }])
         );
+        applyBulkUpdates(chunkUpdates);
         setRoundRobinProgress({ done: Math.min(i + CHUNK_SIZE, total), total });
       }
 
       setConfirmingRoundRobin(false);
     } catch (err) {
-      setError(err.message || 'No se pudo repartir automáticamente');
+      setActionError(err.message || 'No se pudo repartir automáticamente');
     } finally {
       setRunningRoundRobin(false);
       setRoundRobinProgress(null);
     }
   }
+
+  const assigneeLabel = (value) => {
+    if (value === 'todos') return 'Todos';
+    if (value === 'sin_asignar') return `Sin asignar (${unassignedCount})`;
+    if (value === 'mis') return 'Mis clientes';
+    return value;
+  };
 
   return (
     <div className="screen wide">
@@ -404,7 +502,7 @@ export default function AssignClients({ user, year, month, onBack }) {
                 className="filter-pill"
                 whileTap={{ scale: 0.96 }}
                 onClick={() => setConfirmingRoundRobin(true)}
-                disabled={!teamUsers.length}
+                disabled={!repartoUsers.length}
               >
                 <Shuffle size={13} /> Repartir automático
               </motion.button>
@@ -421,14 +519,31 @@ export default function AssignClients({ user, year, month, onBack }) {
                   <Undo2 size={13} /> Revertir ({history.length})
                 </motion.button>
               )}
+
+              {hasActiveFilters && (
+                <motion.button
+                  className="filter-pill"
+                  whileTap={{ scale: 0.96 }}
+                  onClick={clearFilters}
+                  title="Limpiar los filtros (compartidos con la lista de clientes)"
+                >
+                  <XCircle size={13} /> Limpiar filtros
+                </motion.button>
+              )}
             </div>
           </div>
 
-          {/* Panel único: la misma lista de gente sirve para elegir a
-              quién le tocás clientes a mano Y para marcar quién participa
-              del reparto automático (checkbox en cada pill). Antes eran
-              dos cajas separadas con la lista de gente repetida -- se
-              sentía redundante porque literalmente lo era. */}
+          {actionError && (
+            <div className="error-banner" style={{ marginTop: '8px' }}>
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: '13px' }}>{actionError}</div>
+            </div>
+          )}
+
+          {/* Panel único: la misma lista de gente sirve para (a) elegir a
+              quién le asignás clientes tocándolos y (b) ordenar el reparto
+              automático arrastrando los nombres. El número de cada pill es
+              su posición en ese reparto. */}
           <div className="assign-confirm-box">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
               <div>
@@ -437,12 +552,36 @@ export default function AssignClients({ user, year, month, onBack }) {
                     <>Tocá cualquier cliente para <span style={{ color: 'var(--danger)' }}>desasignarlo</span></>
                   ) : activeAssignee ? (
                     <>Asignando a: <strong style={{ color: 'var(--primary)' }}>{activeAssignee}</strong> (tocá para asignar; si ya está pintado, tocalo para despintar)</>
+                  ) : participantsMode ? (
+                    <>
+                      Tocá los nombres que <strong>participan</strong> del reparto automático.
+                      Los que quedan afuera no reciben clientes y no se muestran.
+                    </>
                   ) : (
-                    'Tocá un nombre para asignar clientes tocándolos, o el check ✓ para incluirlo/sacarlo del reparto automático.'
+                    'Tocá un nombre para asignar clientes tocándolos. Arrastralo para cambiar el orden del reparto (el número es su posición).'
                   )}
                 </p>
               </div>
-              {activeAssignee && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`reorder-mode-btn ${participantsMode ? 'active' : ''}`}
+                  onClick={() => {
+                    setParticipantsMode((curr) => !curr);
+                    setActiveAssignee(null);
+                  }}
+                  title="Elegir quiénes entran al reparto automático"
+                >
+                  {participantsMode ? (
+                    'Listo'
+                  ) : (
+                    <>
+                      Participantes
+                      <span className="mode-count">{`(${repartoUsers.length} de ${teamUsers.length})`}</span>
+                    </>
+                  )}
+                </button>
+                {activeAssignee && (
                 <button
                   type="button"
                   onClick={() => setActiveAssignee(null)}
@@ -457,18 +596,50 @@ export default function AssignClients({ user, year, month, onBack }) {
                 >
                   Modo solo lectura
                 </button>
-              )}
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {teamUsers.map((u) => (
+              {(participantsMode ? teamUsers : repartoUsers).map((u, idx) => (
                 <button
                   key={u}
                   type="button"
-                  className={`filter-pill ${activeAssignee === u ? 'active' : ''}`}
-                  onClick={() => setActiveAssignee((curr) => (curr === u ? null : u))}
-                  title={`Tocar clientes para asignarlos a ${u}`}
+                  ref={(el) => {
+                    if (el) pillRefs.current.set(u, el);
+                    else pillRefs.current.delete(u);
+                  }}
+                  className={`filter-pill team-pill ${!participantsMode && activeAssignee === u ? 'active' : ''} ${
+                    draggingUser === u ? 'drag-origin' : ''
+                  } ${draggingUser && dropTarget === u ? 'swap-target' : ''} ${
+                    participantsMode && !repartoUsers.includes(u) ? 'not-participant' : ''
+                  }`}
+                  // draggable=false: si no, el navegador arranca su propio
+                  // drag nativo (fantasma de texto) y se pelea con el nuestro.
+                  draggable="false"
+                  onPointerDown={(e) => {
+                    if (!participantsMode) handlePillPointerDown(e, u);
+                  }}
+                  onPointerMove={handlePillPointerMove}
+                  onPointerUp={endPillDrag}
+                  onPointerCancel={endPillDrag}
+                  onClick={() => {
+                    if (participantsMode) toggleParticipant(u);
+                    else handleTeamPillClick(u);
+                  }}
+                  title={
+                    participantsMode
+                      ? repartoUsers.includes(u)
+                        ? `${u} participa (posición ${repartoUsers.indexOf(u) + 1}) · Tocá para sacarlo`
+                        : `${u} no participa · Tocá para incluirlo`
+                      : `Posición ${idx + 1} en el reparto · Tocá para asignarle clientes · Arrastralo para cambiar el orden`
+                  }
                 >
+                  {/* El número es la posición en el reparto; el guion marca al
+                      que no participa. Texto puro, sin íconos. */}
+                  <span className="pill-order-num">
+                    {participantsMode && !repartoUsers.includes(u) ? '—' : participantsMode ? repartoUsers.indexOf(u) + 1 : idx + 1}
+                  </span>
                   {u}
                 </button>
               ))}
@@ -497,7 +668,7 @@ export default function AssignClients({ user, year, month, onBack }) {
                     <p>
                       Repartir <strong>{filteredRows.length} clientes</strong>
                       {selectedVencimiento !== 'todos' ? <> del Día {selectedVencimiento}</> : null}
-                      {' '}entre los <strong>{roundRobinParticipants.length}</strong> usuarios del equipo,
+                      {' '}entre los <strong>{roundRobinParticipants.length}</strong> participantes,
                       agrupando por vencimiento.
                     </p>
 
@@ -511,10 +682,31 @@ export default function AssignClients({ user, year, month, onBack }) {
                       <button
                         className={`filter-pill ${roundRobinScope === 'todos' ? 'active' : ''}`}
                         onClick={() => setRoundRobinScope('todos')}
+                        title={
+                          protectedCount > 0
+                            ? `${filteredRows.length} clientes en pantalla, pero ${protectedCount} están asignados a alguien que no participa y se respetan`
+                            : 'Reasigna todos los clientes del alcance actual'
+                        }
                       >
-                        Reasignar todos ({filteredRows.length})
+                        Reasignar todos ({filteredRows.length - protectedCount})
                       </button>
                     </div>
+                    {roundRobinScope === 'todos' && protectedCount > 0 && (
+                      <p
+                        style={{
+                          margin: '0 0 10px',
+                          fontSize: '12px',
+                          color: 'var(--text-muted)',
+                          borderLeft: '3px solid var(--warning)',
+                          paddingLeft: '8px',
+                        }}
+                      >
+                        {protectedCount} de esos clientes{' '}
+                        <strong>no se van a tocar</strong>: los tiene alguien que no participa
+                        del reparto (asignación manual). Si querés repartirlos igual, cambiale
+                        el encargado primero.
+                      </p>
+                    )}
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <motion.button
                         type="button"
@@ -550,7 +742,9 @@ export default function AssignClients({ user, year, month, onBack }) {
             </AnimatePresence>
           </div>
 
-          {/* Filtros: Vencimiento + Encargado, mismo patrón que la lista principal */}
+          {/* Filtros: Vencimiento + Encargado + Estado. Son el MISMO estado
+              que usa la lista de clientes (contexto compartido): si
+              filtrás "Día 7" acá, la lista también queda en Día 7. */}
           {vencimientoKey && availableVencimientos.length > 0 && (
             <div className="filter-row">
               <span className="filter-label">
@@ -571,8 +765,11 @@ export default function AssignClients({ user, year, month, onBack }) {
                     title={`Día ${day} • Terminación ${idx}`}
                     aria-label={`Vencimiento Día ${day}, terminación ${idx}`}
                   >
-                    <span className="pill-day-label">Día {day}</span>
-                    <span className="pill-digit-label">{idx}</span>
+                    {/* Decorativos: el nombre accesible del botón ya está en
+                        aria-label. La terminación queda opacity:0 (no
+                        display:none) para que el pill no cambie de tamaño. */}
+                    <span className="pill-day-label" aria-hidden="true">Día {day}</span>
+                    <span className="pill-digit-label" aria-hidden="true">{idx}</span>
                   </button>
                 ))}
               </div>
@@ -581,32 +778,72 @@ export default function AssignClients({ user, year, month, onBack }) {
 
           <div className="filter-row">
             <span className="filter-label">
-              <UserCog size={14} /> Estado:
+              <UserCog size={14} /> Encargado:
             </span>
             <div className="filter-pills">
               <button
-                className={`filter-pill ${selectedStatus === 'todos' ? 'active' : ''}`}
-                onClick={() => setSelectedStatus('todos')}
+                className={`filter-pill ${selectedAssignee === 'todos' ? 'active' : ''}`}
+                onClick={() => setSelectedAssignee('todos')}
               >
-                Todos
+                {assigneeLabel('todos')}
               </button>
               <button
-                className={`filter-pill ${selectedStatus === 'sin_asignar' ? 'active' : ''}`}
-                onClick={() => setSelectedStatus('sin_asignar')}
+                className={`filter-pill ${selectedAssignee === 'sin_asignar' ? 'active' : ''}`}
+                onClick={() => setSelectedAssignee('sin_asignar')}
               >
-                Sin asignar ({unassignedCount})
+                {assigneeLabel('sin_asignar')}
               </button>
-              {teamUsers.map((u) => (
-                <button
-                  key={u}
-                  className={`filter-pill ${selectedStatus === u ? 'active' : ''}`}
-                  onClick={() => setSelectedStatus(u)}
-                >
-                  {u}
-                </button>
-              ))}
+              <button
+                className={`filter-pill ${selectedAssignee === 'mis' ? 'active' : ''}`}
+                onClick={() => setSelectedAssignee('mis')}
+                title="Solo los clientes que te tocan a vos"
+              >
+                <UserCheck size={12} /> {assigneeLabel('mis')}
+              </button>
+              {/* El usuario logueado NO se repite acá: ya tiene el pill "Mis
+                  clientes", que filtra exactamente por lo mismo (la columna
+                  Encargado === user). Tener los dos era redundante. */}
+              {teamUsers
+                .filter((u) => u !== user)
+                .map((u) => (
+                  <button
+                    key={u}
+                    className={`filter-pill ${selectedAssignee === u ? 'active' : ''}`}
+                    onClick={() => setSelectedAssignee(u)}
+                  >
+                    {u}
+                  </button>
+                ))}
             </div>
           </div>
+
+          {primaryStatusHeader && (
+            <div className="filter-row">
+              <span className="filter-label">
+                <CheckCircle2 size={14} /> Estado:
+              </span>
+              <div className="filter-pills">
+                <button
+                  className={`filter-pill ${selectedStatus === 'todos' ? 'active' : ''}`}
+                  onClick={() => setSelectedStatus('todos')}
+                >
+                  Todos
+                </button>
+                <button
+                  className={`filter-pill ${selectedStatus === 'presentado' ? 'active' : ''}`}
+                  onClick={() => setSelectedStatus('presentado')}
+                >
+                  Presentados
+                </button>
+                <button
+                  className={`filter-pill ${selectedStatus === 'pendiente' ? 'active' : ''}`}
+                  onClick={() => setSelectedStatus('pendiente')}
+                >
+                  Pendientes
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Integrated Footer: Results Count */}
           <div className="filter-footer-row">
@@ -628,12 +865,14 @@ export default function AssignClients({ user, year, month, onBack }) {
 
           {(() => {
             const renderRow = (row) => {
-              const currentEncargado = row[encargadoCol] || '';
+              const currentEncargado = String(row[encargadoCol] || '').trim();
               const isAssignedToActive =
                 activeAssignee &&
                 activeAssignee !== '__unassign__' &&
                 currentEncargado === activeAssignee;
               const isUnassigned = !currentEncargado;
+              const isSaving = savingRows.includes(row._row);
+              const justSaved = savedRows.includes(row._row);
 
               let rowTitle = undefined;
               if (activeAssignee === '__unassign__') {
@@ -658,21 +897,63 @@ export default function AssignClients({ user, year, month, onBack }) {
                   <span className="assign-row-name">{row[nameKey] || 'Sin nombre'}</span>
 
                   <div className="assign-row-control">
-                    {savingRow === row._row && <Loader2 size={15} className="animate-spin" />}
-                    {savedRow === row._row && <Check size={15} style={{ color: 'var(--success)' }} />}
-                    {isAssignedToActive && savingRow !== row._row && savedRow !== row._row && (
+                    {isSaving && <Loader2 size={15} className="animate-spin" />}
+                    {justSaved && <Check size={15} style={{ color: 'var(--success)' }} />}
+                    {isAssignedToActive && !isSaving && !justSaved && (
                       <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
                     )}
-                    <span
-                      className="assign-row-current"
-                      style={
-                        isUnassigned
-                          ? { color: 'var(--text-subtle)', fontStyle: 'italic' }
-                          : { fontWeight: 600, color: 'var(--text-main)' }
+                    {/* Encargado editable cliente por cliente. Acá SÍ se puede
+                        elegir a cualquiera del equipo, participe o no del
+                        reparto automático: la lista de participantes acota
+                        sólo la distribución automática, nunca la manual.
+                        Los optgroup separan unos de otros para que se vea a
+                        quién se le está dando trabajo "fuera de reparto". */}
+                    <select
+                      className={`sort-select assign-row-select ${isUnassigned ? 'is-empty' : ''}`}
+                      value={currentEncargado}
+                      disabled={!encargadoCol}
+                      title={
+                        currentEncargado
+                          ? `Encargado: ${currentEncargado} (cambialo por quien quieras del equipo)`
+                          : 'Sin asignar: elegí un encargado'
                       }
+                      // El click no debe llegar al onClick de la fila (que
+                      // asigna al encargado "activo"); si no, tocar el
+                      // desplegable también pintaría el cliente.
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        assignRow(row, e.target.value || '__unassign__');
+                      }}
                     >
-                      {currentEncargado || 'Sin asignar'}
-                    </span>
+                      <option value="">Sin asignar</option>
+                      {/* Si la planilla tiene un nombre que ya no está en el
+                          equipo sincronizado, se muestra igual en vez de
+                          blanquearlo: no se inventan ni se pierden datos. */}
+                      {currentEncargado && !teamUsers.includes(currentEncargado) && (
+                        <option value={currentEncargado}>
+                          {currentEncargado} (fuera del equipo)
+                        </option>
+                      )}
+                      {roundRobinParticipants.length > 0 && (
+                        <optgroup label="Participan del reparto">
+                          {roundRobinParticipants.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {nonParticipants.length > 0 && (
+                        <optgroup label="No participan (asignación manual)">
+                          {nonParticipants.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
                   </div>
                 </motion.div>
               );
@@ -707,6 +988,29 @@ export default function AssignClients({ user, year, month, onBack }) {
             );
           })()}
         </>
+      )}
+
+      {/* Clon visible del nombre que se está arrastrando. Va por portal a
+          document.body a propósito: esta pantalla vive adentro de un
+          <motion.div> con transform, y un transform en un ancestro hace que
+          position:fixed se posicione respecto de ese ancestro en vez de la
+          pantalla (mismo motivo que el bottom-sheet de filtros de la lista).
+          pointer-events:none para que no intercepte nada mientras se mueve. */}
+      {createPortal(
+        <div
+          ref={ghostRef}
+          className="team-pill-ghost"
+          aria-hidden="true"
+          style={{ opacity: 0 }}
+        >
+          {draggingUser && (
+            <>
+              <span className="pill-order-num">{repartoUsers.indexOf(draggingUser) + 1}</span>
+              {draggingUser}
+            </>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );
