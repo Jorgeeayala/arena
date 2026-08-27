@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+Extension/clientes.csv
+
+# Variables de entorno locales (no subir al repo)
+.env
+.env.*
+!.env.example

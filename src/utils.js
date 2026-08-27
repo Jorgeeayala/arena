@@ -331,3 +331,30 @@ export function formatPeriodLabel(month, year) {
 }
 
 
+
+// --- Columnas de credenciales de Marangatu (login SET) -----------------
+// El botón de la tarjeta que abre el login de Marangatu lee estas dos
+// columnas de la fila. La detección tolera los nombres reales de la hoja:
+// "R.U.C." (usuario) y "Clave MH" (contraseña).
+export function findRucColumn(headers) {
+  if (!headers || !headers.length) return null;
+  const found = headers.find((h) => {
+    const comp = compactHeader(h);
+    return comp === 'ruc' || comp === 'nroruc' || comp === 'ruccliente' || comp.startsWith('ruc');
+  });
+  return found || null;
+}
+
+export function findClaveMarangatuColumn(headers) {
+  if (!headers || !headers.length) return null;
+  const found = headers.find((h) => {
+    const comp = compactHeader(h);
+    return (
+      comp === 'clavemh' ||
+      comp === 'clavemarangatu' ||
+      comp === 'passwordmh' ||
+      (comp.includes('clave') && comp.includes('mh'))
+    );
+  });
+  return found || null;
+}

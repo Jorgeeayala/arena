@@ -10,6 +10,7 @@ import ClientDetail from './screens/ClientDetail';
 import NewClient from './screens/NewClient';
 import AssignClients from './screens/AssignClients';
 import AppSplashLoader from './components/AppSplashLoader';
+import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
 import { formatPeriodLabel } from './utils';
 import { api } from './api';
@@ -38,7 +39,6 @@ export default function App() {
   const [month, setMonth] = useState(null);
   const [selectedClient, setSelectedClient] = useState(null);
   const [creatingWithHeaders, setCreatingWithHeaders] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignClientsOpen, setAssignClientsOpen] = useState(false);
 
@@ -342,11 +342,65 @@ export default function App() {
     );
   };
 
+  // Las pantallas del período (lista, asignar, detalle, nuevo cliente)
+  // viven DENTRO del <ClientsProvider>: comparten un único estado de la
+  // planilla, así lo que se cambia en una se refleja en las otras sin
+  // recargar. Ese estado se lee con un hook, por eso el render se delega
+  // al componente <PeriodScreens> de más abajo.
+  return (
+    <div className="app-container">
+      <AppSplashLoader logoSrc="/logo-mj.png" minDurationMs={2400} />
+      {renderNavbar()}
+      <ClientsProvider user={user} year={year} month={month}>
+        <PeriodScreens
+          user={user}
+          year={year}
+          month={month}
+          onPickUser={handlePickUser}
+          onPickYear={setYear}
+          onPickMonth={setMonth}
+          onChangeYear={() => setYear(null)}
+          selectedClient={selectedClient}
+          onSelectClient={setSelectedClient}
+          onBackFromDetail={() => setSelectedClient(null)}
+          creatingWithHeaders={creatingWithHeaders}
+          onNewClient={setCreatingWithHeaders}
+          onCancelNewClient={() => setCreatingWithHeaders(null)}
+          assignClientsOpen={assignClientsOpen}
+          onBackFromAssign={() => setAssignClientsOpen(false)}
+        />
+      </ClientsProvider>
+    </div>
+  );
+}
+
+// Pantallas del período elegido. Vive dentro del <ClientsProvider> para
+// poder usar el contexto compartido: los datos de la planilla, el equipo
+// y los filtros son los mismos para la lista y para "Asignar clientes".
+function PeriodScreens({
+  user,
+  year,
+  month,
+  onPickUser,
+  onPickYear,
+  onPickMonth,
+  onChangeYear,
+  selectedClient,
+  onSelectClient,
+  onBackFromDetail,
+  creatingWithHeaders,
+  onNewClient,
+  onCancelNewClient,
+  assignClientsOpen,
+  onBackFromAssign,
+}) {
+  const { reload } = useClients();
+
   const getScreenContent = () => {
     if (!user) {
       return (
         <motion.div key="name-picker" variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          <NamePicker onPick={handlePickUser} />
+          <NamePicker onPick={onPickUser} />
         </motion.div>
       );
     }
@@ -354,7 +408,7 @@ export default function App() {
     if (!year) {
       return (
         <motion.div key="year-picker" variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          <YearPicker onPick={setYear} user={user} />
+          <YearPicker onPick={onPickYear} user={user} />
         </motion.div>
       );
     }
@@ -362,7 +416,7 @@ export default function App() {
     if (!month) {
       return (
         <motion.div key={`month-picker-${year}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          <MonthPicker year={year} onPick={setMonth} onChangeYear={() => setYear(null)} />
+          <MonthPicker year={year} onPick={onPickMonth} onChangeYear={onChangeYear} />
         </motion.div>
       );
     }
@@ -370,12 +424,7 @@ export default function App() {
     if (assignClientsOpen) {
       return (
         <motion.div key={`assign-clients-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          <AssignClients
-            user={user}
-            year={year}
-            month={month}
-            onBack={() => setAssignClientsOpen(false)}
-          />
+          <AssignClients onBack={onBackFromAssign} />
         </motion.div>
       );
     }
@@ -388,10 +437,12 @@ export default function App() {
             year={year}
             month={month}
             headers={creatingWithHeaders}
-            onCancel={() => setCreatingWithHeaders(null)}
+            onCancel={onCancelNewClient}
             onCreated={() => {
-              setCreatingWithHeaders(null);
-              setRefreshKey((k) => k + 1);
+              onCancelNewClient();
+              // El cliente nuevo entra al estado compartido: la lista y
+              // "Asignar clientes" lo ven sin necesidad de recargar a mano.
+              reload(true);
             }}
           />
         </motion.div>
@@ -412,41 +463,25 @@ export default function App() {
             year={year}
             month={month}
             client={selectedClient}
-            onBack={() => setSelectedClient(null)}
+            onBack={onBackFromDetail}
           />
         </motion.div>
       );
     }
 
     return (
-      <motion.div key={`client-list-${year}-${month}-${refreshKey}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
-        <ClientList
-          user={user}
-          year={year}
-          month={month}
-          onSelect={setSelectedClient}
-          onChangeMonth={() => setMonth(null)}
-          onNewClient={setCreatingWithHeaders}
-        />
+      <motion.div key={`client-list-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+        <ClientList onSelect={onSelectClient} onNewClient={onNewClient} />
       </motion.div>
     );
   };
 
-  return (
-    <div className="app-container">
-      <AppSplashLoader logoSrc="/logo-mj.png" minDurationMs={2400} />
-      {renderNavbar()}
-      {/* mode="popLayout" en vez de "wait": con "wait", la pantalla que
-          sale tenía que desmontarse del todo (y ClientDetail terminar su
-          carga inicial) ANTES de que la nueva empezara a aparecer -- ese
-          hueco se sentía como un microcorte al entrar/salir de un
-          cliente. Con "popLayout" ambas se animan superpuestas (la que
-          sale se saca del flujo normal así no empuja el layout), sin
-          instante en blanco en el medio. */}
-      <AnimatePresence mode="popLayout">
-        {getScreenContent()}
-      </AnimatePresence>
-    </div>
-  );
+  // mode="popLayout" en vez de "wait": con "wait", la pantalla que
+  // salía tenía que desmontarse del todo (y ClientDetail terminar su
+  // carga inicial) ANTES de que la nueva empezara a aparecer -- ese
+  // hueco se sentía como un microcorte al entrar/salir de un
+  // cliente. Con "popLayout" ambas se animan superpuestas (la que
+  // sale se saca del flujo normal así no empuja el layout), sin
+  // instante en blanco en el medio.
+  return <AnimatePresence mode="popLayout">{getScreenContent()}</AnimatePresence>;
 }
-

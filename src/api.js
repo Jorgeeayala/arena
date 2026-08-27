@@ -1,5 +1,11 @@
 import { BACKEND_URL, API_TOKEN } from './config';
-import { enqueueUpdate, configureSaveQueue, onQueueStatusChange, flushNow } from './saveQueue';
+import {
+  enqueueUpdate,
+  configureSaveQueue,
+  onQueueStatusChange,
+  flushNow,
+  getPendingUpdates,
+} from './saveQueue';
 
 // Persistent & in-memory cache for instant navigation & zero latency
 const LOCAL_STORAGE_CACHE_KEY = 'sheets_remote_persistent_cache_v2';
@@ -27,6 +33,24 @@ function saveCache() {
   } catch (e) {
     console.warn('Error al guardar cache persistente:', e);
   }
+}
+
+// Vuelve a aplicar sobre los datos recién leídos del servidor las ediciones
+// que todavía están en la cola de guardado (sin salir). Sin esto, una
+// revalidación en segundo plano puede devolver la foto vieja de la hoja y
+// "desasignar" visualmente un cliente que acabás de asignar.
+function withPendingWrites(data, year, sheet) {
+  const pendings = getPendingUpdates().filter(
+    (u) => String(u.year) === String(year) && String(u.sheet) === String(sheet)
+  );
+  if (!pendings.length) return data;
+
+  const rows = (data.rows || []).map((r) => ({ ...r }));
+  pendings.forEach((u) => {
+    const target = rows.find((r) => r._row === u.row);
+    if (target) target[u.column] = u.value;
+  });
+  return { ...data, rows };
 }
 
 async function fetchWithRetry(url, options = {}, retries = 3, delay = 400) {
@@ -164,14 +188,22 @@ export const api = {
       // Revalidar en segundo plano para incorporar columnas nuevas o filas creadas en la planilla
       get('read', { year, sheet }).then((data) => {
         if (data && data.headers) {
-          cache.read[key] = { headers: data.headers || [], rows: data.rows || [] };
+          cache.read[key] = withPendingWrites(
+            { headers: data.headers || [], rows: data.rows || [] },
+            year,
+            sheet
+          );
           saveCache();
         }
       }).catch(() => {});
       return cache.read[key];
     }
     const data = await get('read', { year, sheet });
-    cache.read[key] = { headers: data.headers || [], rows: data.rows || [] };
+    cache.read[key] = withPendingWrites(
+      { headers: data.headers || [], rows: data.rows || [] },
+      year,
+      sheet
+    );
     saveCache();
     return cache.read[key];
   },

@@ -102,6 +102,20 @@ export function enqueueUpdate({ year, sheet, user, row, column, value }) {
   });
 }
 
+// Copia de las escrituras que están en la cola esperando salir al backend.
+// Sirve para no "rebobinar" cambios optimistas con datos viejos del
+// servidor: cuando el cache se revalida en segundo plano puede volver una
+// foto de la hoja anterior a una edición que todavía no se mandó.
+export function getPendingUpdates() {
+  return Array.from(pending.values()).map(({ year, sheet, row, column, value }) => ({
+    year,
+    sheet,
+    row,
+    column,
+    value,
+  }));
+}
+
 // Manda TODO el lote en una sola petición al backend (acción
 // 'updateBatch'), y reparte el resultado por celda usando el array
 // `results` que devuelve Apps Script. El request en sí se reintenta si

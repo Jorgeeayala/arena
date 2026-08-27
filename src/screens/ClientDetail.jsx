@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../api';
+import { useClients } from '../context/ClientsContext';
 import {
   pickNameColumn,
   findUserStampColumn,
@@ -45,6 +46,11 @@ const cardVariants = {
 };
 
 export default function ClientDetail({ user, year, month, client, onBack }) {
+  // El detalle también escribe sobre el estado compartido del período: así
+  // lo que se edita acá ya está actualizado en la lista y en "Asignar
+  // clientes" cuando se vuelve, sin recargar nada.
+  const { applyLocalUpdates, encargadoCol, teamUsers, repartoUsers } = useClients();
+
   const [values, setValues] = useState(client);
   const [savingField, setSavingField] = useState(null);
   const [savedField, setSavedField] = useState(null);
@@ -66,6 +72,15 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
 
   const presentadoPorCol = useMemo(() => findUserStampColumn(fields, 'presentado'), [fields]);
   const archivadoPorCol = useMemo(() => findUserStampColumn(fields, 'archivado'), [fields]);
+
+  // El campo Encargado se edita con un desplegable del equipo completo. Los
+  // que no participan del reparto automático van en su propio grupo, pero
+  // se pueden elegir igual: la lista de participantes acota sólo el reparto,
+  // nunca a quién se le puede asignar un cliente a mano.
+  const nonParticipants = useMemo(
+    () => (teamUsers || []).filter((u) => !(repartoUsers || []).includes(u)),
+    [teamUsers, repartoUsers]
+  );
 
   const presUser = presentadoPorCol && values[presentadoPorCol] ? String(values[presentadoPorCol]) : null;
   const archUser = archivadoPorCol && values[archivadoPorCol] ? String(values[archivadoPorCol]) : null;
@@ -92,6 +107,8 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
 
     // Update local state first for immediate UI response
     setValues((prev) => ({ ...prev, ...updates }));
+    // ...y en el estado compartido (lista + asignar clientes) también.
+    applyLocalUpdates(client._row, updates);
 
     setSavingField(column);
     setSavedField(null);
@@ -214,10 +231,18 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
       >
         {fields.map((field) => {
           const fieldType = getFieldType(field, values[field]);
+          const isEncargadoField = Boolean(encargadoCol) && field === encargadoCol;
           const isSaving = savingField === field;
           const isJustSaved = savedField === field;
           const isActive = activeField === field;
           const currentValue = String(values[field] ?? '').trim().toUpperCase();
+          // Si la hoja tiene un encargado que ya no está en el equipo
+          // sincronizado, se conserva como opción en vez de blanquearlo.
+          const encargadoActual = String(values[field] ?? '').trim();
+          const encargadoFueraDeEquipo =
+            isEncargadoField && encargadoActual && !(teamUsers || []).includes(encargadoActual)
+              ? encargadoActual
+              : '';
 
           return (
             <motion.div
@@ -330,6 +355,80 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
                       type="text"
                       className="field-input"
                       placeholder="Escribir texto o nombre..."
+                      value={values[field] ?? ''}
+                      onFocus={() => setActiveField(field)}
+                      onBlur={() => setActiveField((prev) => (prev === field ? null : prev))}
+                      onChange={(e) => setValues({ ...values, [field]: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveField(field);
+                      }}
+                    />
+                    <motion.button
+                      className={`field-save-btn ${isJustSaved ? 'saved' : ''}`}
+                      whileHover={{ scale: 1.08 }}
+                      whileTap={{ scale: 0.92 }}
+                      disabled={isSaving || values[field] === client[field]}
+                      onClick={() => saveField(field)}
+                    >
+                      {isSaving ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : isJustSaved ? (
+                        <Check size={15} />
+                      ) : (
+                        <Save size={15} />
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+              ) : isEncargadoField ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {/* Encargado con el equipo COMPLETO: los que participan del
+                      reparto automático y los que no. Elegir a uno de afuera
+                      es una asignación manual y es totalmente válida. */}
+                  <select
+                    className="select-input"
+                    value={encargadoActual}
+                    disabled={isSaving}
+                    onFocus={() => setActiveField(field)}
+                    onBlur={() => setActiveField((prev) => (prev === field ? null : prev))}
+                    onChange={(e) => {
+                      setValues({ ...values, [field]: e.target.value });
+                      saveField(field, e.target.value);
+                    }}
+                  >
+                    <option value="">Sin asignar</option>
+                    {encargadoFueraDeEquipo && (
+                      <option value={encargadoFueraDeEquipo}>
+                        {encargadoFueraDeEquipo} (fuera del equipo)
+                      </option>
+                    )}
+                    {(repartoUsers || []).length > 0 && (
+                      <optgroup label="Participan del reparto">
+                        {(repartoUsers || []).map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {nonParticipants.length > 0 && (
+                      <optgroup label="No participan (asignación manual)">
+                        {nonParticipants.map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+
+                  {/* Se conserva la escritura libre: si hace falta cargar un
+                      nombre que no está en el equipo, se puede. */}
+                  <div className="field-input-row">
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Otro nombre (se escribe tal cual en la hoja)"
                       value={values[field] ?? ''}
                       onFocus={() => setActiveField(field)}
                       onBlur={() => setActiveField((prev) => (prev === field ? null : prev))}

@@ -2,20 +2,17 @@ import { useEffect, useMemo, useState, useRef, useCallback, memo, forwardRef } f
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useDragControls, useMotionValue, useTransform } from 'motion/react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
-import { api } from '../api';
+import { useClients } from '../context/ClientsContext';
 import {
-  pickNameColumn,
-  findVencimientoColumn,
-  findUserStampColumn,
-  findEncargadoColumn,
   findPresentadoColumn,
   findArchivadoColumn,
   isAffirmativeValue,
-  assignClientsSequentially,
-  getFieldType,
   getDisplayHeader,
   formatPeriodLabel,
+  findRucColumn,
+  findClaveMarangatuColumn,
 } from '../utils';
+import { openMarangatuLogin } from '../marangatu';
 import {
   Search,
   Plus,
@@ -31,13 +28,12 @@ import {
   Filter,
   ArrowUpDown,
   UserCheck,
+  UserCog,
   BarChart3,
   Archive,
   Award,
   Check,
 } from 'lucide-react';
-
-const STORAGE_KEY_TEAM = 'app-team-users';
 
 const itemVariants = {
   hidden: { opacity: 0, y: 14, scale: 0.98 },
@@ -94,8 +90,13 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
   itemVariants,
   isTouchDevice,
   headers,
+  hasEncargadoCol,
   dataIndex,
   virtualStyle,
+  teamUsers,
+  repartoUsers,
+  onSetEncargado,
+  savingEncargado,
 }, ref) {
   const [localOverrides, setLocalOverrides] = useState({});
   // dragX era useState antes: eso disparaba un re-render de React en
@@ -142,6 +143,21 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
   const clientName = row[nameKey] || 'Sin Nombre';
   const vtoValue = vencimientoKey ? String(row[vencimientoKey] || '').trim() : '';
   const assignedUser = row._assignedUser;
+
+  // Los que están en el equipo pero NO entran al reparto automático. Igual
+  // se les puede asignar a mano desde la tarjeta: la lista de participantes
+  // acota sólo la distribución automática.
+  const nonParticipants = useMemo(
+    () => (teamUsers || []).filter((u) => !(repartoUsers || []).includes(u)),
+    [teamUsers, repartoUsers]
+  );
+
+  // Credenciales de Marangatu de este cliente (botón de la tarjeta). Si la
+  // hoja no tiene la columna, el botón no se muestra para ese cliente.
+  const rucCol = useMemo(() => findRucColumn(headers), [headers]);
+  const claveCol = useMemo(() => findClaveMarangatuColumn(headers), [headers]);
+  const marangatuRuc = rucCol ? String(row[rucCol] || '').trim() : '';
+  const marangatuClave = claveCol ? String(row[claveCol] || '').trim() : '';
 
   const presColName = presHeader || presentadoPorCol || findPresentadoColumn(headers) || null;
   const archColName = archHeader || archivadoPorCol || findArchivadoColumn(headers) || null;
@@ -336,12 +352,59 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
                   </span>
                 )}
 
-                {assignedUser && (
-                  <span className="assigned-user-badge">
+                {/* El encargado es SIEMPRE el valor real de la columna
+                    "Encargado" de la hoja, y ahora se puede cambiar acá
+                    mismo. La asignación manual acepta a CUALQUIERA del
+                    equipo: la lista de participantes acota sólo el reparto
+                    automático, no a quién se le puede dar un cliente. */}
+                {hasEncargadoCol ? (
+                  // stopPropagation: el click no debe abrir el detalle del
+                  // cliente, y el pointerdown no debe arrancar el swipe de
+                  // la tarjeta cuando el dedo cae sobre el desplegable.
+                  <span
+                    className="card-encargado-wrap"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
                     <UserCheck size={11} />
-                    Encargado: {assignedUser}
+                    <select
+                      className={`card-encargado-select ${assignedUser ? '' : 'is-empty'}`}
+                      value={assignedUser || ''}
+                      disabled={savingEncargado}
+                      title={
+                        assignedUser
+                          ? `Encargado: ${assignedUser} · cambialo por quien quieras del equipo`
+                          : 'Sin asignar · elegí un encargado'
+                      }
+                      onChange={(e) => onSetEncargado(row._row, e.target.value)}
+                    >
+                      <option value="">Sin asignar</option>
+                      {/* Un nombre que ya no está en el equipo sincronizado se
+                          muestra igual, en vez de blanquearlo. */}
+                      {assignedUser && !(teamUsers || []).includes(assignedUser) && (
+                        <option value={assignedUser}>{assignedUser} (fuera del equipo)</option>
+                      )}
+                      {(repartoUsers || []).length > 0 && (
+                        <optgroup label="Participan del reparto">
+                          {(repartoUsers || []).map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {nonParticipants.length > 0 && (
+                        <optgroup label="No participan (asignación manual)">
+                          {nonParticipants.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -376,6 +439,23 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
 
         {/* Interactive Quick Action Toggles right on card */}
         <div className="card-quick-actions" onClick={(e) => e.stopPropagation()}>
+          {/* Botón Marangatu (solo PC): abre el login de la SET con las
+              credenciales de este cliente. Con la extensión instalada y
+              configurada, autocompleta; si no, abre la página igual. */}
+          {!isTouchDevice && marangatuRuc && (
+            <button
+              type="button"
+              className="marangatu-btn"
+              title={`Abrir Marangatu y autocompletar con RUC ${marangatuRuc}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                openMarangatuLogin({ user: marangatuRuc, pass: marangatuClave });
+              }}
+            >
+              <img src="/marangatu.png" alt="Marangatu" className="marangatu-logo" />
+            </button>
+          )}
+
           {/* Dedicated Presentado toggle if not in statusHeaders and column exists (ONLY on PC, mobile uses Swipe) */}
           {!hasPresInStatusHeaders && !isTouchDevice && presColName && (
             <button
@@ -449,14 +529,57 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
 }));
 SwipeableClientCard.displayName = 'SwipeableClientCard';
 
-export default function ClientList({ user, year, month, onSelect, onChangeMonth, onNewClient }) {
+export default function ClientList({ onSelect, onNewClient }) {
   const isTouchDevice = useIsTouchDevice();
-  const [headers, setHeaders] = useState([]);
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
-  const [selectedVencimiento, setSelectedVencimiento] = useState('todos');
+
+  // Datos, equipo, filtros y escritura vienen del CONTEXTO COMPARTIDO con
+  // la pantalla "Asignar clientes" (ClientsProvider). No es una copia: es
+  // el mismo estado. Lo que se asigna o edita en una pantalla aparece al
+  // instante en la otra, y los filtros son exactamente los mismos.
+  const {
+    user,
+    year,
+    month,
+    headers,
+    rows,
+    assignedRows,
+    loading,
+    error,
+    reload,
+    teamUsers,
+    repartoUsers,
+    setEncargado,
+    syncingUsers,
+    syncTeamUsers,
+    nameKey,
+    vencimientoKey,
+    encargadoCol,
+    presentadoPorCol,
+    archivadoPorCol,
+    presentadoCol,
+    archivadoCol,
+    statusHeaders,
+    primaryStatusHeader,
+    availableVencimientos,
+    unassignedCount,
+    query,
+    setQuery,
+    selectedVencimiento,
+    setSelectedVencimiento,
+    selectedStatus,
+    setSelectedStatus,
+    selectedAssignee,
+    setSelectedAssignee,
+    sortBy,
+    setSortBy,
+    applySharedFilters,
+    activeFilterCount,
+    hasActiveFilters,
+    clearFilters,
+    saveRowUpdates,
+    savingRows,
+  } = useClients();
+
   // Controla el panel de filtros como bottom-sheet en mobile. En desktop
   // este estado se ignora vía CSS: los filtros quedan siempre visibles
   // como hasta ahora.
@@ -490,230 +613,24 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
     return () => mq.removeEventListener('change', handleChange);
   }, []);
 
-  const [selectedStatus, setSelectedStatus] = useState('todos');
-  const [selectedAssignedUser, setSelectedAssignedUser] = useState('todos');
-  const [sortBy, setSortBy] = useState('alpha');
   const [activeTab, setActiveTab] = useState('lista'); // 'lista' | 'resumen'
   const [showTeamModal, setShowTeamModal] = useState(false);
-  const [syncingUsers, setSyncingUsers] = useState(false);
 
-  // Team users state
-  const [teamUsers, setTeamUsers] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_TEAM);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // ignore error
-    }
-    return [user].filter(Boolean);
-  });
+  // Botón "Recargar datos": fuerza la planilla Y el equipo, que es lo que
+  // hacía el viejo loadData() local. Ahora ambos viven en el contexto.
+  const refreshAll = useCallback(() => {
+    reload(true);
+    syncTeamUsers(true);
+  }, [reload, syncTeamUsers]);
 
-  // Sync team strictly with total users fetched from Google Sheets API
-  async function syncTotalUsers(force = false) {
-    setSyncingUsers(true);
-    try {
-      const allUsers = await api.listUsers(force);
-      if (Array.isArray(allUsers) && allUsers.length > 0) {
-        // Strict replacement from Google Sheets so deleted users are also removed
-        const updated = Array.from(new Set(user ? [user, ...allUsers] : allUsers)).filter(Boolean);
-        setTeamUsers(updated);
-        localStorage.setItem(STORAGE_KEY_TEAM, JSON.stringify(updated));
-
-        if (selectedAssignedUser !== 'todos' && !updated.includes(selectedAssignedUser)) {
-          setSelectedAssignedUser('todos');
-        }
-      }
-    } catch (e) {
-      console.warn('Error al sincronizar usuarios totales:', e);
-    } finally {
-      setSyncingUsers(false);
-    }
-  }
-
-  // Keep current logged-in user inside teamUsers list
-  useEffect(() => {
-    if (user && !teamUsers.includes(user)) {
-      const updated = [user, ...teamUsers];
-      setTeamUsers(updated);
-      localStorage.setItem(STORAGE_KEY_TEAM, JSON.stringify(updated));
-    }
-  }, [user, teamUsers]);
-
-  function loadData(force = false) {
-    setLoading(true);
-    setError('');
-    syncTotalUsers(force);
-    api
-      .readClients(year, month, force)
-      .then((data) => {
-        setHeaders(data.headers || []);
-        setRows(data.rows || []);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-    setError('');
-
-    // Cargar usuarios totales para el equipo directamente desde Google Sheets
-    api
-      .listUsers()
-      .then((allUsers) => {
-        if (isMounted && Array.isArray(allUsers) && allUsers.length > 0) {
-          const updated = Array.from(new Set(user ? [user, ...allUsers] : allUsers)).filter(Boolean);
-          setTeamUsers(updated);
-          localStorage.setItem(STORAGE_KEY_TEAM, JSON.stringify(updated));
-        }
-      })
-      .catch((err) => console.warn('Error cargando usuarios totales:', err));
-
-    api
-      .readClients(year, month)
-      .then((data) => {
-        if (isMounted) {
-          setHeaders(data.headers || []);
-          setRows(data.rows || []);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) setError(err.message);
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [year, month, user]);
-
-  const nameKey = useMemo(() => (headers.length ? pickNameColumn(headers) : null), [headers]);
-  const vencimientoKey = useMemo(() => findVencimientoColumn(headers), [headers]);
-
-  // Cantidad de filtros activos (sin contar la búsqueda por texto), para
-  // mostrar el badge en el botón "Filtros" del bottom-sheet mobile.
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (selectedAssignedUser !== 'todos') count++;
-    if (selectedVencimiento !== 'todos') count++;
-    if (selectedStatus !== 'todos') count++;
-    return count;
-  }, [selectedAssignedUser, selectedVencimiento, selectedStatus]);
-
-  // Stamp & Status columns (Presentado, Archivado, Encargado)
-  const presentadoPorCol = useMemo(() => findUserStampColumn(headers, 'presentado'), [headers]);
-  const archivadoPorCol = useMemo(() => findUserStampColumn(headers, 'archivado'), [headers]);
-  const presentadoCol = useMemo(() => findPresentadoColumn(headers), [headers]);
-  const archivadoCol = useMemo(() => findArchivadoColumn(headers), [headers]);
-
-  // Columna real de "Encargado" (si existe en la hoja). Cuando una fila
-  // ya tiene ese valor cargado, es la asignación de verdad -- se respeta
-  // tal cual. Solo cuando está vacía se usa el round-robin como
-  // sugerencia automática.
-  const encargadoCol = useMemo(() => findEncargadoColumn(headers), [headers]);
-
-  const assignedRows = useMemo(() => {
-    const suggestions = assignClientsSequentially(rows, vencimientoKey, teamUsers);
-    if (!encargadoCol) return suggestions;
-    return suggestions.map((row) => {
-      const real = row[encargadoCol];
-      return real ? { ...row, _assignedUser: real } : row;
-    });
-  }, [rows, vencimientoKey, teamUsers, encargadoCol]);
-
-  // Extract unique vencimiento numbers (e.g. 7, 9, 11) from dataset
-  const availableVencimientos = useMemo(() => {
-    if (!vencimientoKey || !rows.length) return [];
-    const set = new Set();
-    rows.forEach((r) => {
-      const raw = String(r[vencimientoKey] || '').trim();
-      if (raw) {
-        const digits = raw.match(/\d+/);
-        if (digits) {
-          set.add(String(parseInt(digits[0], 10)));
-        } else {
-          set.add(raw);
-        }
-      }
-    });
-    return Array.from(set).sort((a, b) => {
-      const na = parseInt(a, 10);
-      const nb = parseInt(b, 10);
-      if (!isNaN(na) && !isNaN(nb)) return na - nb;
-      return a.localeCompare(b);
-    });
-  }, [vencimientoKey, rows]);
-
-  // Status check headers (e.g. Presentado, Papeles, Archivado, Recibido)
-  const statusHeaders = useMemo(() => {
-    if (!headers.length) return [];
-    return headers
-      .filter((h) => {
-        if (h === nameKey || h === vencimientoKey || h === presentadoPorCol || h === archivadoPorCol) return false;
-        const type = getFieldType(h, '');
-        return type === 'pure_yesno' || type === 'hybrid';
-      })
-      .slice(0, 5);
-  }, [headers, nameKey, vencimientoKey, presentadoPorCol, archivadoPorCol]);
-
-  // Primary status column (prioritizes Presentado / DDJJ / Declarado)
-  const primaryStatusHeader =
-    presentadoCol || statusHeaders.find((h) => findPresentadoColumn([h])) || statusHeaders[0] || null;
-
-  // Filter and Sort logic
+  // Lista filtrada y ordenada. El filtrado NO se define acá: viene de
+  // applySharedFilters (contexto compartido), así que la lista y la
+  // pantalla "Asignar clientes" muestran exactamente el mismo conjunto de
+  // clientes con los mismos filtros. Acá sólo se aplica el orden.
   const filteredAndSorted = useMemo(() => {
-    let list = [...assignedRows];
+    const list = applySharedFilters(assignedRows);
 
-    // 1. Text Search Filter
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      list = list.filter((row) =>
-        Object.values(row).some((v) => String(v).toLowerCase().includes(q))
-      );
-    }
-
-    // 2. Vencimiento Filter
-    if (vencimientoKey && selectedVencimiento !== 'todos') {
-      list = list.filter((row) => {
-        const raw = String(row[vencimientoKey] || '').trim();
-        const digits = raw.match(/\d+/);
-        const dayStr = digits ? String(parseInt(digits[0], 10)) : raw;
-        return dayStr === selectedVencimiento;
-      });
-    }
-
-    // 3. Status Filter (Presentado vs Pendiente)
-    const activePresCol = primaryStatusHeader || presentadoCol || presentadoPorCol;
-    if (selectedStatus !== 'todos' && activePresCol) {
-      list = list.filter((row) => {
-        const val = row[activePresCol];
-        const hasStamp = presentadoPorCol && Boolean(String(row[presentadoPorCol] || '').trim());
-        const isYes =
-          activePresCol === presentadoPorCol
-            ? Boolean(String(val || '').trim())
-            : isAffirmativeValue(val) || hasStamp;
-        if (selectedStatus === 'presentado') return isYes;
-        if (selectedStatus === 'pendiente') return !isYes;
-        return true;
-      });
-    }
-
-    // 4. Assigned User Filter
-    if (selectedAssignedUser !== 'todos') {
-      if (selectedAssignedUser === 'mis') {
-        list = list.filter((row) => row._assignedUser === user);
-      } else {
-        list = list.filter((row) => row._assignedUser === selectedAssignedUser);
-      }
-    }
-
-    // 5. Sorting (Alphabetical by default or Vencimiento)
+    // Orden: alfabético (por defecto) o por día de vencimiento.
     list.sort((a, b) => {
       if (sortBy === 'vencimiento' && vencimientoKey) {
         const rawA = String(a[vencimientoKey] || '').trim();
@@ -729,20 +646,7 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
     });
 
     return list;
-  }, [
-    assignedRows,
-    query,
-    vencimientoKey,
-    selectedVencimiento,
-    selectedStatus,
-    primaryStatusHeader,
-    presentadoCol,
-    presentadoPorCol,
-    selectedAssignedUser,
-    user,
-    sortBy,
-    nameKey,
-  ]);
+  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, nameKey]);
 
   // --- Virtualización de la lista ---
   // Antes se renderizaba un <SwipeableClientCard> real por cada cliente
@@ -882,44 +786,16 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
         }
       }
 
-      // Optimistic update locally
-      setRows((prev) =>
-        prev.map((r) => (r._row === row._row ? { ...r, ...updates } : r))
-      );
-
+      // Guardado compartido: saveRowUpdates (del contexto) pinta el cambio
+      // al instante en el estado que usan TODAS las pantallas -- lista,
+      // asignación y detalle -- y lo revierte si el backend falla.
       try {
-        const savePromises = [
-          api.updateCell({
-            year,
-            sheet: month,
-            user,
-            row: row._row,
-            column: exactCol,
-            value: newValue,
-          }),
-        ];
-
-        for (const [stampCol, stampVal] of Object.entries(updates)) {
-          if (stampCol !== exactCol && headers.includes(stampCol)) {
-            savePromises.push(
-              api.updateCell({
-                year,
-                sheet: month,
-                user,
-                row: row._row,
-                column: stampCol,
-                value: stampVal,
-              })
-            );
-          }
-        }
-
-        await Promise.all(savePromises);
+        await saveRowUpdates(row._row, updates);
       } catch (err) {
         console.error('Error actualizando estado:', err);
       }
     },
-    [headers, presentadoPorCol, archivadoPorCol, user, year, month]
+    [headers, presentadoPorCol, archivadoPorCol, user, month, year, saveRowUpdates]
   );
 
   return (
@@ -950,7 +826,7 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
             className="back-btn"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => loadData(true)}
+            onClick={refreshAll}
             title="Recargar datos"
           >
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -1229,10 +1105,59 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
                     title={`Día ${day} • Terminación ${idx}`}
                     aria-label={`Vencimiento Día ${day}, terminación ${idx}`}
                   >
-                    <span className="pill-day-label">Día {day}</span>
-                    <span className="pill-digit-label">{idx}</span>
+                    {/* Decorativos: el nombre accesible del botón ya está en
+                        aria-label. La terminación queda opacity:0 (no
+                        display:none) para que el pill no cambie de tamaño. */}
+                    <span className="pill-day-label" aria-hidden="true">Día {day}</span>
+                    <span className="pill-digit-label" aria-hidden="true">{idx}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Encargado Filter Pills -- estado compartido con "Asignar
+              clientes": si elegís una persona acá, esa pantalla también
+              queda filtrada por esa persona (y viceversa). */}
+          {encargadoCol && (
+            <div className="filter-row">
+              <span className="filter-label">
+                <UserCog size={14} /> Encargado:
+              </span>
+              <div className="filter-pills">
+                <button
+                  className={`filter-pill ${selectedAssignee === 'todos' ? 'active' : ''}`}
+                  onClick={() => setSelectedAssignee('todos')}
+                >
+                  Todos
+                </button>
+                <button
+                  className={`filter-pill ${selectedAssignee === 'sin_asignar' ? 'active' : ''}`}
+                  onClick={() => setSelectedAssignee('sin_asignar')}
+                >
+                  Sin asignar ({unassignedCount})
+                </button>
+                <button
+                  className={`filter-pill ${selectedAssignee === 'mis' ? 'active' : ''}`}
+                  onClick={() => setSelectedAssignee('mis')}
+                  title="Solo los clientes que te tocan a vos"
+                >
+                  <UserCheck size={12} /> Mis clientes
+                </button>
+                {/* El usuario logueado NO se repite acá: ya tiene el pill
+                    "Mis clientes", que filtra exactamente por lo mismo (la
+                    columna Encargado === user). Tener los dos era redundante. */}
+                {teamUsers
+                  .filter((u) => u !== user)
+                  .map((u) => (
+                    <button
+                      key={u}
+                      className={`filter-pill ${selectedAssignee === u ? 'active' : ''}`}
+                      onClick={() => setSelectedAssignee(u)}
+                    >
+                      {u}
+                    </button>
+                  ))}
               </div>
             </div>
           )}
@@ -1293,21 +1218,14 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
                 </select>
               </div>
 
-              {(selectedVencimiento !== 'todos' ||
-                selectedStatus !== 'todos' ||
-                selectedAssignedUser !== 'todos' ||
-                query) && (
+              {hasActiveFilters && (
                 <motion.button
                   className="back-btn"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   style={{ padding: '4px 10px', fontSize: '12px' }}
-                  onClick={() => {
-                    setSelectedVencimiento('todos');
-                    setSelectedStatus('todos');
-                    setSelectedAssignedUser('todos');
-                    setQuery('');
-                  }}
+                  onClick={clearFilters}
+                  title="Limpiar los filtros (compartidos con Asignar clientes)"
                 >
                   <X size={13} /> Limpiar filtros
                 </motion.button>
@@ -1362,7 +1280,7 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.95 }}
               style={{ marginTop: '10px', padding: '6px 12px', fontSize: '13px' }}
-              onClick={loadData}
+              onClick={refreshAll}
             >
               <RefreshCw size={14} /> Reintentar
             </motion.button>
@@ -1385,7 +1303,7 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
 
           <AnimatePresence mode="wait">
             <motion.ul
-              key={`${query}_${selectedVencimiento}_${selectedStatus}_${selectedAssignedUser}_${sortBy}`}
+              key={`${query}_${selectedVencimiento}_${selectedStatus}_${selectedAssignee}_${sortBy}`}
               ref={listRef}
               className="client-list"
               initial={{ opacity: 0 }}
@@ -1446,6 +1364,11 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
                     itemVariants={itemVariants}
                     isTouchDevice={isTouchDevice}
                     headers={headers}
+                    hasEncargadoCol={Boolean(encargadoCol)}
+                    teamUsers={teamUsers}
+                    repartoUsers={repartoUsers}
+                    onSetEncargado={setEncargado}
+                    savingEncargado={savingRows.includes(row._row)}
                   />
                 );
               })}
@@ -1461,21 +1384,16 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
                   No se encontraron clientes
                 </h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                  {query || selectedVencimiento !== 'todos' || selectedStatus !== 'todos' || selectedAssignedUser !== 'todos'
+                  {hasActiveFilters
                     ? 'Pruebe ajustar la búsqueda o los filtros de asignación, vencimiento y estado.'
                     : 'No hay clientes cargados en esta planilla.'}
                 </p>
-                {query || selectedVencimiento !== 'todos' || selectedStatus !== 'todos' || selectedAssignedUser !== 'todos' ? (
+                {hasActiveFilters ? (
                   <motion.button
                     className="btn-secondary"
                     whileHover={{ scale: 1.04 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setQuery('');
-                      setSelectedVencimiento('todos');
-                      setSelectedStatus('todos');
-                      setSelectedAssignedUser('todos');
-                    }}
+                    onClick={clearFilters}
                   >
                     Limpiar todos los filtros
                   </motion.button>
@@ -1566,7 +1484,7 @@ export default function ClientList({ user, year, month, onSelect, onChangeMonth,
                 className="btn-primary btn-sync-users"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => syncTotalUsers(true)}
+                onClick={() => syncTeamUsers(true)}
                 disabled={syncingUsers}
                 style={{ width: '100%', justifyContent: 'center', padding: '10px 16px' }}
               >
