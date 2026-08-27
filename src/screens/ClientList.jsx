@@ -452,7 +452,7 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
                 openMarangatuLogin({ user: marangatuRuc, pass: marangatuClave });
               }}
             >
-              <img src="/marangatu.png" alt="Marangatu" className="marangatu-logo" />
+              <img src="/marangatu.svg" alt="Marangatu" className="marangatu-logo" />
             </button>
           )}
 
