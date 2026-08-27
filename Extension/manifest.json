@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Ekuatia Login",
+  "version": "1.0",
+  "description": "Login automático con buscador de clientes",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
