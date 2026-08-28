@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -12,7 +12,7 @@ import AssignClients from './screens/AssignClients';
 import AppSplashLoader from './components/AppSplashLoader';
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
-import { formatPeriodLabel } from './utils';
+import { formatPeriodLabel, normalizeSearchText } from './utils';
 import { api } from './api';
 import { Calendar, User, Sun, Moon, Menu, X, UserCog } from 'lucide-react';
 import './styles.css';
@@ -41,29 +41,38 @@ export default function App() {
   const [creatingWithHeaders, setCreatingWithHeaders] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignClientsOpen, setAssignClientsOpen] = useState(false);
+  const [initialScreenReady, setInitialScreenReady] = useState(false);
+  const markInitialScreenReady = useCallback(() => setInitialScreenReady(true), []);
 
-  // Rol del usuario actual (SUPERUSUARIO / ADMINISTRADOR / USUARIO), para
-  // saber si mostrar la sección "Asignar clientes" del menú. Por ahora
-  // Super y Admin tienen los mismos permisos -- el día que se quieran
-  // diferenciar, es un solo chequeo acá abajo.
-  const [userRole, setUserRole] = useState(null);
+  // El nombre elegido sigue persistido en el dispositivo, pero el rol se
+  // confirma una vez contra Drive en cada arranque (y al cambiar de usuario).
+  // Guardamos también a quién pertenece el resultado para no mostrar durante
+  // la consulta el permiso que tenía el usuario anterior.
+  const [roleCheck, setRoleCheck] = useState({ user: null, role: null });
+  const userRole = roleCheck.user === user ? roleCheck.role : null;
+  const roleReady = !user || roleCheck.user === user;
+  const initialContentReady = initialScreenReady && roleReady;
   const canAssignClients = userRole === 'SUPERUSUARIO' || userRole === 'ADMINISTRADOR';
 
   useEffect(() => {
-    if (!user) {
-      setUserRole(null);
-      return;
-    }
+    if (!user) return;
+
     let cancelled = false;
-    api.listUsersWithRoles()
+    // `true` evita el caché persistente: los cambios hechos en la columna ROL
+    // deben aplicarse en la siguiente apertura de la app.
+    api.listUsersWithRoles(true)
       .then((list) => {
         if (cancelled) return;
-        const match = list.find((u) => u.name === user);
-        setUserRole(match ? match.role : 'USUARIO');
+        const normalizedUser = normalizeSearchText(user);
+        const match = list.find((item) => normalizeSearchText(item.name) === normalizedUser);
+        setRoleCheck({ user, role: match ? match.role : 'USUARIO' });
       })
       .catch(() => {
-        if (!cancelled) setUserRole('USUARIO');
+        // Ante un fallo de red se usa el permiso más restrictivo y se deja que
+        // el loader continúe; nunca se concede un rol administrativo por error.
+        if (!cancelled) setRoleCheck({ user, role: 'USUARIO' });
       });
+
     return () => {
       cancelled = true;
     };
@@ -349,11 +358,17 @@ export default function App() {
   // al componente <PeriodScreens> de más abajo.
   return (
     <div className="app-container">
-      <AppSplashLoader logoSrc="/logo-mj.png" minDurationMs={2400} />
+      <AppSplashLoader
+        logoSrc="/logo-mj.png"
+        ready={initialContentReady}
+        minDurationMs={600}
+        maxDurationMs={3000}
+      />
       {renderNavbar()}
       <ClientsProvider user={user} year={year} month={month}>
         <PeriodScreens
           user={user}
+          onInitialContentReady={markInitialScreenReady}
           year={year}
           month={month}
           onPickUser={handlePickUser}
@@ -379,6 +394,7 @@ export default function App() {
 // y los filtros son los mismos para la lista y para "Asignar clientes".
 function PeriodScreens({
   user,
+  onInitialContentReady,
   year,
   month,
   onPickUser,
@@ -400,7 +416,7 @@ function PeriodScreens({
     if (!user) {
       return (
         <motion.div key="name-picker" variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          <NamePicker onPick={onPickUser} />
+          <NamePicker onPick={onPickUser} onReady={onInitialContentReady} />
         </motion.div>
       );
     }
@@ -408,7 +424,7 @@ function PeriodScreens({
     if (!year) {
       return (
         <motion.div key="year-picker" variants={pageVariants} initial="initial" animate="animate" exit="exit">
-          <YearPicker onPick={onPickYear} user={user} />
+          <YearPicker onPick={onPickYear} user={user} onReady={onInitialContentReady} />
         </motion.div>
       );
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { api } from '../api';
 import { Calendar, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
@@ -24,24 +24,27 @@ const itemVariants = {
   },
 };
 
-export default function YearPicker({ onPick }) {
+export default function YearPicker({ onPick, onReady }) {
   const [years, setYears] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  function loadYears() {
+  const loadYears = useCallback(() => {
     setLoading(true);
     setError('');
     api
       .listYears()
       .then(setYears)
       .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }
+      .finally(() => {
+        setLoading(false);
+        onReady?.();
+      });
+  }, [onReady]);
 
   useEffect(() => {
     loadYears();
-  }, []);
+  }, [loadYears]);
 
   return (
     <div className="screen centered">

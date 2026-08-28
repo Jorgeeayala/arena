@@ -1,46 +1,65 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 
 /**
  * Splash de arranque de la app.
- * El logo de MJ Estudio Contable vive en public/logo-mj.png — es el
- * visual principal. El video con croma (ChromaVideoLoader) queda como
- * opcional por si más adelante se quiere una animación encima.
+ *
+ * No simula un porcentaje: permanece visible hasta que la primera pantalla
+ * informa que terminó su carga inicial y el logo/la interfaz ya tuvieron
+ * oportunidad de renderizarse. Un mínimo corto evita un destello brusco y el
+ * máximo impide que una conexión lenta bloquee el acceso a los skeletons o al
+ * mensaje de error de la pantalla.
  */
 export default function AppSplashLoader({
   logoSrc = '/logo-mj.png',
+  ready = false,
   onFinished = null,
-  message = 'Cargando recursos del Estudio Contable...',
-  minDurationMs = 2400,
+  message = 'Preparando el sistema...',
+  minDurationMs = 600,
+  maxDurationMs = 3000,
 }) {
   const [showSplash, setShowSplash] = useState(true);
-  const [progress, setProgress] = useState(8);
+  const [minimumElapsed, setMinimumElapsed] = useState(false);
+  const [logoReady, setLogoReady] = useState(false);
+  const [uiPainted, setUiPainted] = useState(false);
+  const finishedRef = useRef(false);
+
+  const finish = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    setShowSplash(false);
+    if (onFinished) onFinished();
+  }, [onFinished]);
 
   useEffect(() => {
-    let hideTimer;
+    const timer = setTimeout(() => setMinimumElapsed(true), minDurationMs);
+    return () => clearTimeout(timer);
+  }, [minDurationMs]);
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 92) return 92;
-        return Math.min(92, prev + Math.floor(Math.random() * 12 + 6));
-      });
-    }, 220);
-
-    const timer = setTimeout(() => {
-      setProgress(100);
-      hideTimer = setTimeout(() => {
-        setShowSplash(false);
-        if (onFinished) onFinished();
-      }, 420);
-    }, minDurationMs);
+  useEffect(() => {
+    // Dos frames garantizan que React haya pintado la pantalla que está detrás
+    // del overlay antes de permitir que este desaparezca.
+    let secondFrame;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => setUiPainted(true));
+    });
 
     return () => {
-      clearInterval(interval);
-      clearTimeout(timer);
-      if (hideTimer) clearTimeout(hideTimer);
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
     };
-  }, [minDurationMs, onFinished]);
+  }, []);
+
+  useEffect(() => {
+    const maximumWait = Math.max(minDurationMs, maxDurationMs);
+    const timer = setTimeout(finish, maximumWait);
+    return () => clearTimeout(timer);
+  }, [finish, minDurationMs, maxDurationMs]);
+
+  useEffect(() => {
+    if (minimumElapsed && ready && logoReady && uiPainted) finish();
+  }, [finish, logoReady, minimumElapsed, ready, uiPainted]);
 
   return (
     <AnimatePresence>
@@ -69,26 +88,19 @@ export default function AppSplashLoader({
                 src={logoSrc}
                 alt="MJ Estudio Contable"
                 draggable="false"
+                onLoad={() => setLogoReady(true)}
+                onError={() => setLogoReady(true)}
               />
             </motion.div>
 
-            <p className="splash-message">{message}</p>
+            <p className="splash-message">
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+              {message}
+            </p>
 
-            <div className="splash-progress">
+            <div className="splash-progress" aria-hidden="true">
               <div className="splash-progress-track">
-                <motion.div
-                  className="splash-progress-fill"
-                  initial={{ width: '0%' }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.28, ease: 'easeOut' }}
-                />
-              </div>
-              <div className="splash-progress-meta">
-                <span className="splash-progress-label">
-                  <Loader2 size={12} className="animate-spin" />
-                  Cargando sistema...
-                </span>
-                <strong className="splash-progress-pct">{progress}%</strong>
+                <div className="splash-progress-fill" />
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { api } from '../api';
 import { STORAGE_KEY_USER } from '../config';
@@ -25,24 +25,27 @@ const itemVariants = {
   },
 };
 
-export default function NamePicker({ onPick }) {
+export default function NamePicker({ onPick, onReady }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  function loadUsers() {
+  const loadUsers = useCallback(() => {
     setLoading(true);
     setError('');
     api
       .listUsersWithRoles()
       .then(setUsers)
       .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }
+      .finally(() => {
+        setLoading(false);
+        onReady?.();
+      });
+  }, [onReady]);
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [loadUsers]);
 
   function choose(name) {
     localStorage.setItem(STORAGE_KEY_USER, name);

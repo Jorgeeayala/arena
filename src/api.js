@@ -1,4 +1,5 @@
 import { BACKEND_URL, API_TOKEN } from './config';
+import { normalizeUserRole } from './utils';
 import {
   enqueueUpdate,
   configureSaveQueue,
@@ -97,61 +98,77 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 400) {
   throw lastError;
 }
 
-async function get(action, extraParams = {}) {
-  const params = new URLSearchParams({ action, token: API_TOKEN, ...extraParams });
-  return fetchWithRetry(`${BACKEND_URL}?${params.toString()}`, { method: 'GET' });
+function assertBackendConfig() {
+  const missing = [];
+  if (!BACKEND_URL) missing.push('VITE_BACKEND_URL');
+  if (!API_TOKEN) missing.push('VITE_API_TOKEN');
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Configuración incompleta: falta definir ${missing.join(' y ')} en el entorno de compilación.`
+    );
+  }
 }
 
-async function post(body) {
+// Una única vía para lecturas y escrituras. `text/plain` mantiene la petición
+// dentro de las solicitudes CORS simples que acepta Apps Script, mientras que
+// el token viaja en el JSON y deja de formar parte de la URL.
+async function request(body) {
+  assertBackendConfig();
   return fetchWithRetry(BACKEND_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' }, // evita preflight CORS con Apps Script
-    body: JSON.stringify({ token: API_TOKEN, ...body }),
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ ...body, token: API_TOKEN }),
   });
 }
 
-// La cola de guardado usa el mismo `post` (con sus retries y su token) para
-// mandar los batches de updates en segundo plano.
-configureSaveQueue({ post });
+// La cola de guardado usa la misma función (con retries y token) para mandar
+// los batches de actualizaciones en segundo plano.
+configureSaveQueue({ post: request });
+
+function getUserName(item) {
+  if (typeof item === 'string') return item.trim();
+  if (!item || typeof item !== 'object') return '';
+  return String(
+    item.name ?? item.user ?? item.USUARIO ?? item.Usuario ?? item.usuario ?? ''
+  ).trim();
+}
+
+function getUserRole(item) {
+  if (!item || typeof item !== 'object') return 'USUARIO';
+  return normalizeUserRole(item.role ?? item.ROLE ?? item.ROL ?? item.Rol ?? item.rol);
+}
 
 export const api = {
-  ping: () => get('ping'),
+  ping: () => request({ action: 'ping' }),
 
   listUsers: async (force = false) => {
     if (!force && cache.users) {
-      return cache.users.map((u) => (typeof u === 'string' ? u : u.name || u.user || u.USUARIO || u.Usuario)).filter(Boolean);
+      return cache.users.map(getUserName).filter(Boolean);
     }
-    const d = await get('users');
+    const d = await request({ action: 'users' });
     cache.users = d.users || [];
     saveCache();
-    return (d.users || []).map((u) => (typeof u === 'string' ? u : u.name || u.user || u.USUARIO || u.Usuario)).filter(Boolean);
+    return (d.users || []).map(getUserName).filter(Boolean);
   },
 
   listUsersWithRoles: async (force = false) => {
     let rawUsers = cache.users;
     if (force || !rawUsers) {
-      const d = await get('users');
+      const d = await request({ action: 'users' });
       rawUsers = d.users || [];
       cache.users = rawUsers;
       saveCache();
     }
-    return (rawUsers || []).map((item) => {
-      if (typeof item === 'string') {
-        const name = item.trim();
-        const upper = name.toUpperCase();
-        const role = upper.includes('JORGE') ? 'SUPERUSUARIO' : 'USUARIO';
-        return { name, role };
-      }
-      const name = item.name || item.user || item.USUARIO || item.Usuario || '';
-      const role = (item.role || item.ROL || item.Rol || 'USUARIO').toUpperCase();
-      return { name, role };
-    }).filter((u) => u.name);
+    return (rawUsers || [])
+      .map((item) => ({ name: getUserName(item), role: getUserRole(item) }))
+      .filter((u) => u.name);
   },
 
   listYears: async (force = false) => {
     if (!force && cache.years) {
       // Revalidar en segundo plano para captar nuevos años si se crean
-      get('years').then((d) => {
+      request({ action: 'years' }).then((d) => {
         if (d.years) {
           cache.years = d.years;
           saveCache();
@@ -159,7 +176,7 @@ export const api = {
       }).catch(() => {});
       return cache.years;
     }
-    const d = await get('years');
+    const d = await request({ action: 'years' });
     cache.years = d.years;
     saveCache();
     return d.years;
@@ -168,7 +185,7 @@ export const api = {
   listMonths: async (year, force = false) => {
     if (!force && cache.months[year]) {
       // Revalidar en segundo plano para descubrir nuevas hojas creadas en Google Sheets
-      get('months', { year }).then((d) => {
+      request({ action: 'months', year }).then((d) => {
         if (d.months) {
           cache.months[year] = d.months;
           saveCache();
@@ -176,7 +193,7 @@ export const api = {
       }).catch(() => {});
       return cache.months[year];
     }
-    const d = await get('months', { year });
+    const d = await request({ action: 'months', year });
     cache.months[year] = d.months;
     saveCache();
     return d.months;
@@ -186,7 +203,7 @@ export const api = {
     const key = `${year}_${sheet}`;
     if (!force && cache.read[key]) {
       // Revalidar en segundo plano para incorporar columnas nuevas o filas creadas en la planilla
-      get('read', { year, sheet }).then((data) => {
+      request({ action: 'read', year, sheet }).then((data) => {
         if (data && data.headers) {
           cache.read[key] = withPendingWrites(
             { headers: data.headers || [], rows: data.rows || [] },
@@ -198,7 +215,7 @@ export const api = {
       }).catch(() => {});
       return cache.read[key];
     }
-    const data = await get('read', { year, sheet });
+    const data = await request({ action: 'read', year, sheet });
     cache.read[key] = withPendingWrites(
       { headers: data.headers || [], rows: data.rows || [] },
       year,
@@ -237,7 +254,7 @@ export const api = {
   flushPendingSaves: flushNow,
 
   createClient: async ({ year, sheet, user, values }) => {
-    const res = await post({ action: 'create', year, sheet, user, values });
+    const res = await request({ action: 'create', year, sheet, user, values });
     const key = `${year}_${sheet}`;
     
     if (res.row && cache.read[key]) {

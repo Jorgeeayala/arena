@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useClients } from '../context/ClientsContext';
-import { formatPeriodLabel } from '../utils';
+import { formatPeriodLabel, getClientSearchScore } from '../utils';
 import {
   ArrowLeft,
   Search,
@@ -50,6 +50,7 @@ export default function AssignClients({ onBack }) {
     toggleParticipant,
     swapTeamMembers,
     nameKey,
+    rucKey,
     encargadoCol,
     vencimientoKey,
     availableVencimientos,
@@ -250,8 +251,16 @@ export default function AssignClients({ onBack }) {
     // compartido): búsqueda + vencimiento + estado + encargado.
     const list = applySharedFilters(assignedRows);
 
-    // Orden: respeta la opción de orden elegida en la lista de clientes.
+    // La búsqueda prioriza Nombre/Razón social y luego RUC. Sin búsqueda,
+    // respeta la opción de orden elegida en la lista de clientes.
     return list.sort((a, b) => {
+      if (query.trim()) {
+        const relevance =
+          getClientSearchScore(b, query, nameKey, rucKey) -
+          getClientSearchScore(a, query, nameKey, rucKey);
+        if (relevance !== 0) return relevance;
+      }
+
       if (sortBy === 'vencimiento' && vencimientoKey) {
         const numA = parseInt(getVencimientoDay(a), 10);
         const numB = parseInt(getVencimientoDay(b), 10);
@@ -264,7 +273,7 @@ export default function AssignClients({ onBack }) {
         sensitivity: 'base',
       });
     });
-  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, getVencimientoDay, nameKey]);
+  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, getVencimientoDay, nameKey, query, rucKey]);
 
   // Vista agrupada por vencimiento: se arma solo cuando tiene sentido
   // verla (viendo "Todos los vencimientos", sin buscar nada puntual) y

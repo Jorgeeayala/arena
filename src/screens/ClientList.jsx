@@ -11,6 +11,7 @@ import {
   formatPeriodLabel,
   findRucColumn,
   findClaveMarangatuColumn,
+  getClientSearchScore,
 } from '../utils';
 import { openMarangatuLogin } from '../marangatu';
 import {
@@ -553,6 +554,7 @@ export default function ClientList({ onSelect, onNewClient }) {
     syncTeamUsers,
     nameKey,
     vencimientoKey,
+    rucKey,
     encargadoCol,
     presentadoPorCol,
     archivadoPorCol,
@@ -630,8 +632,18 @@ export default function ClientList({ onSelect, onNewClient }) {
   const filteredAndSorted = useMemo(() => {
     const list = applySharedFilters(assignedRows);
 
-    // Orden: alfabético (por defecto) o por día de vencimiento.
+    // Mientras se escribe, la coincidencia más relevante manda: primero
+    // Nombre/Razón social, luego RUC y finalmente el resto de columnas.
+    // El orden elegido por el usuario queda como desempate y vuelve a ser el
+    // criterio principal apenas se limpia la búsqueda.
     list.sort((a, b) => {
+      if (query.trim()) {
+        const relevance =
+          getClientSearchScore(b, query, nameKey, rucKey) -
+          getClientSearchScore(a, query, nameKey, rucKey);
+        if (relevance !== 0) return relevance;
+      }
+
       if (sortBy === 'vencimiento' && vencimientoKey) {
         const rawA = String(a[vencimientoKey] || '').trim();
         const rawB = String(b[vencimientoKey] || '').trim();
@@ -646,7 +658,7 @@ export default function ClientList({ onSelect, onNewClient }) {
     });
 
     return list;
-  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, nameKey]);
+  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, nameKey, query, rucKey]);
 
   // --- Virtualización de la lista ---
   // Antes se renderizaba un <SwipeableClientCard> real por cada cliente

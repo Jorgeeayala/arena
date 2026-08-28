@@ -31,6 +31,101 @@ export function pickNameColumn(headers) {
   return headers[0];
 }
 
+// Texto comparable para el buscador: no distingue mayúsculas, tildes,
+// puntuación ni espacios repetidos ("PÉREZ S.A." y "perez sa" coinciden).
+export function normalizeSearchText(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function allTermsMatchWordStarts(text, terms) {
+  const words = text.split(' ').filter(Boolean);
+  return terms.every((term) => words.some((word) => word.startsWith(term)));
+}
+
+/**
+ * Puntaje de relevancia de una fila para la búsqueda (mayor = mejor).
+ * - Nombre/Razón social siempre tiene la prioridad más alta.
+ * - RUC queda segundo.
+ * - El resto de las columnas permite seguir encontrando por cualquier dato.
+ * Devuelve -1 cuando la fila no coincide.
+ */
+export function getClientSearchScore(row, query, nameKey, rucKey) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return 0;
+
+  const terms = normalizedQuery.split(' ').filter(Boolean);
+  const compactQuery = normalizedQuery.replace(/\s+/g, '');
+  const name = normalizeSearchText(nameKey ? row[nameKey] : '');
+
+  if (name) {
+    if (name === normalizedQuery) return 1000;
+    if (name.startsWith(normalizedQuery)) return 950;
+    if (name.includes(normalizedQuery)) return 900;
+    if (allTermsMatchWordStarts(name, terms)) return 850;
+    if (terms.every((term) => name.includes(term))) return 800;
+  }
+
+  const ruc = normalizeSearchText(rucKey ? row[rucKey] : '');
+  const compactRuc = ruc.replace(/\s+/g, '');
+  if (compactRuc && compactQuery) {
+    if (compactRuc === compactQuery) return 700;
+    if (compactRuc.startsWith(compactQuery)) return 650;
+    if (compactRuc.includes(compactQuery)) return 600;
+  }
+
+  const otherValues = Object.entries(row)
+    .filter(([key]) => !key.startsWith('_') && key !== nameKey && key !== rucKey)
+    .map(([, value]) => normalizeSearchText(value))
+    .filter(Boolean);
+
+  for (const value of otherValues) {
+    if (value === normalizedQuery) return 500;
+  }
+  for (const value of otherValues) {
+    if (value.startsWith(normalizedQuery)) return 450;
+  }
+  for (const value of otherValues) {
+    if (value.includes(normalizedQuery)) return 400;
+  }
+  for (const value of otherValues) {
+    if (allTermsMatchWordStarts(value, terms)) return 350;
+  }
+
+  // Permite consultas combinadas, por ejemplo parte del nombre + parte del
+  // RUC, aunque los términos estén distribuidos entre distintas columnas.
+  const searchableRow = [name, ruc, ...otherValues].join(' ');
+  if (terms.every((term) => searchableRow.includes(term))) return 300;
+
+  return -1;
+}
+
+// Los permisos usan una forma canónica aunque la planilla tenga variantes
+// habituales como "Admin", espacios accidentales o diferencias de mayúsculas.
+export function normalizeUserRole(value) {
+  const compact = normalizeSearchText(value).replace(/\s+/g, '');
+
+  if (
+    compact === 'superusuario' ||
+    compact === 'superusuaria' ||
+    compact === 'superadmin' ||
+    compact === 'superadministrador' ||
+    compact === 'superadministradora'
+  ) {
+    return 'SUPERUSUARIO';
+  }
+
+  if (compact === 'admin' || compact === 'administrador' || compact === 'administradora') {
+    return 'ADMINISTRADOR';
+  }
+
+  return 'USUARIO';
+}
+
 export function getDisplayHeader(header) {
   if (!header) return 'Vencimiento';
   const clean = String(header).trim().replace(/[:._\-]+$/, '').trim();

@@ -29,6 +29,8 @@ import { api } from '../api';
 import {
   pickNameColumn,
   findVencimientoColumn,
+  findRucColumn,
+  getClientSearchScore,
   findUserStampColumn,
   findEncargadoColumn,
   findPresentadoColumn,
@@ -287,6 +289,7 @@ export function ClientsProvider({ user, year, month, children }) {
   // --- Columnas detectadas (una sola vez, compartidas) --------------------
   const nameKey = useMemo(() => (headers.length ? pickNameColumn(headers) : null), [headers]);
   const vencimientoKey = useMemo(() => findVencimientoColumn(headers), [headers]);
+  const rucKey = useMemo(() => findRucColumn(headers), [headers]);
   const encargadoCol = useMemo(() => findEncargadoColumn(headers), [headers]);
   const presentadoPorCol = useMemo(() => findUserStampColumn(headers, 'presentado'), [headers]);
   const archivadoPorCol = useMemo(() => findUserStampColumn(headers, 'archivado'), [headers]);
@@ -416,10 +419,7 @@ export function ClientsProvider({ user, year, month, children }) {
       let out = [...list];
 
       if (query.trim()) {
-        const q = query.trim().toLowerCase();
-        out = out.filter((row) =>
-          Object.values(row).some((v) => String(v).toLowerCase().includes(q))
-        );
+        out = out.filter((row) => getClientSearchScore(row, query, nameKey, rucKey) >= 0);
       }
 
       if (vencimientoKey && selectedVencimiento !== 'todos') {
@@ -441,6 +441,8 @@ export function ClientsProvider({ user, year, month, children }) {
     },
     [
       query,
+      nameKey,
+      rucKey,
       vencimientoKey,
       selectedVencimiento,
       getVencimientoDay,
@@ -601,6 +603,7 @@ export function ClientsProvider({ user, year, month, children }) {
       // columnas detectadas
       nameKey,
       vencimientoKey,
+      rucKey,
       encargadoCol,
       presentadoCol,
       archivadoCol,
@@ -658,6 +661,7 @@ export function ClientsProvider({ user, year, month, children }) {
       syncTeamUsers,
       nameKey,
       vencimientoKey,
+      rucKey,
       encargadoCol,
       presentadoCol,
       archivadoCol,
