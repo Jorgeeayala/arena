@@ -1,44 +1,53 @@
 # Ekuatia Login (extensión Chrome/Edge)
 
-Autocompleta el login de Marangatu. Tiene dos vías:
+Puente exclusivo entre **Control Clientes** y el formulario de acceso de
+Marangatu. No tiene popup, buscador, importador de CSV ni funcionamiento
+independiente.
 
-1. **Popup (manual):** buscador de clientes + "Login automático" sobre la pestaña activa.
-2. **Puente desde la app (recomendado):** el botón Marangatu de cada tarjeta de
-   "Control Clientes" le manda `R.U.C.` + `Clave MH` por mensajería externa y la
-   extensión abre el login e inyecta. Las credenciales viajan en memoria: nunca
-   quedan en la URL, el historial ni el portapapeles.
+Al pulsar el botón Marangatu de una tarjeta, Control Clientes envía el `R.U.C.`
+y la `Clave MH` mediante mensajería externa de Chromium. El service worker abre
+la página oficial de acceso e inyecta los datos una sola vez.
 
 ## Instalar
 
 1. Abrí `chrome://extensions` (o `edge://extensions`).
-2. Activá **"Modo de desarrollador"** (arriba a la derecha).
-3. **"Cargar descomprimida"** → elegí esta carpeta `Extension/`.
-4. Copiá el **ID** que aparece bajo el nombre de la extensión.
+2. Activá **Modo de desarrollador**.
+3. Elegí **Cargar descomprimida** y seleccioná esta carpeta `Extension/`.
+4. Copiá el ID que aparece debajo del nombre de la extensión.
 
-## Conectar con la app
+Después de modificar sus archivos, usá el botón **Recargar** de la extensión en
+esa misma pantalla.
 
-1. En la raíz del proyecto creá un archivo `.env` (copiá `.env.example`).
-2. Poné `VITE_MARANGATU_EXT_ID=<el ID que copiaste>`.
-3. Reiniciá `npm run dev` (o rebuild de la PWA).
-4. Si tu app corre en un dominio propio, agregalo a
-   `externally_connectable.matches` en `manifest.json`.
+## Conectar con Control Clientes
 
-> El autologin por mensajería funciona en Chrome/Edge/Chromium. En **Firefox**
-> esa vía no existe: el botón simplemente abre la página de login.
+1. En el `.env` local de Control Clientes configurá
+   `VITE_MARANGATU_EXT_ID=<ID de la extensión>`.
+2. Reiniciá `npm run dev` o generá nuevamente la aplicación.
+3. Usá el botón Marangatu desde una tarjeta de cliente.
 
-## ¿Dónde va el CSV?
+El ID no debe escribirse directamente en el código fuente. En una extensión
+cargada de forma descomprimida puede variar entre computadoras.
 
-**No va al repo.** `clientes.csv` contenía contraseñas en claro y se quitó del
-control de versiones (está en `.gitignore`).
+## Permisos
 
-- Para el **botón de la app** no hace falta el CSV: las credenciales salen de las
-  columnas `R.U.C.` y `Clave MH` de tu planilla.
-- Para el **buscador del popup**, guardá el CSV como un archivo LOCAL en tu PC
-  (por ejemplo en Documentos) y cargalo con el selector de archivo del popup.
-  Qeda en `localStorage` de la extensión, no en el repo.
+- `scripting`: inyecta el RUC y la clave únicamente en el formulario de
+  Marangatu.
+- `tabs`: abre la página oficial y espera a que termine de cargar.
+- `host_permissions`: limita la inyección a `https://marangatu.set.gov.py/*`.
 
 ## Seguridad
 
-- No commitees `clientes.csv` ni ningún volcado de contraseñas.
-- Si ese archivo llegó a estar en el historial de un repo compartido, rotá las
-  contraseñas y purgalo (`git filter-repo`).
+- La extensión no usa `localStorage`, `chrome.storage` ni archivos CSV.
+- No conserva listas de clientes ni credenciales.
+- El RUC y la clave existen temporalmente en memoria durante la apertura del
+  formulario; no se colocan en la URL, el historial ni el portapapeles.
+- Los orígenes autorizados para comunicarse con la extensión deben limitarse en
+  `externally_connectable.matches` al dominio real de Control Clientes antes de
+  distribuirla.
+- Si un CSV con contraseñas fue compartido o versionado anteriormente, las
+  claves afectadas deben rotarse y el archivo debe eliminarse también del
+  historial correspondiente.
+
+> La mensajería directa con la extensión funciona en Chrome, Edge y otros
+> navegadores Chromium. Sin la extensión, Control Clientes abre Marangatu para
+> realizar el acceso manual.

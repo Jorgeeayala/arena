@@ -1,11 +1,9 @@
-// Background (service worker) de "Ekuatia Login".
+// Service worker del puente "Ekuatia Login".
 //
-// Atiende el pedido de la app web ("Control Clientes") vía mensajería externa
-// (chrome.runtime.onMessageExternal). La app manda SOLO { user, pass } por un
-// canal en memoria; acá se abre el login de Marangatu y se inyecta una sola
-// vez. Las credenciales nunca tocan la URL, el historial ni el portapapeles,
-// y sólo los orígenes declarados en "externally_connectable" pueden hablar
-// con esta extensión.
+// Atiende exclusivamente pedidos externos de Control Clientes. La app manda
+// { user, pass } por un canal en memoria; acá se abre el login de Marangatu y
+// se inyecta una sola vez. La extensión no persiste listas ni credenciales, y
+// éstas nunca se colocan en la URL, el historial ni el portapapeles.
 const LOGIN_URL = 'https://marangatu.set.gov.py/eset/login';
 
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {

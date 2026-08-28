@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Ekuatia Login",
-  "version": "1.1",
-  "description": "Login automático con buscador de clientes + puente desde la app Control Clientes",
-  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "version": "1.2",
+  "description": "Puente de acceso a Marangatu desde Control Clientes",
+  "permissions": ["scripting", "tabs"],
   "host_permissions": ["https://marangatu.set.gov.py/*"],
   "background": {
     "service_worker": "background.js"
@@ -13,8 +13,5 @@
       "*://localhost/*",
       "https://*.e2b.app/*"
     ]
-  },
-  "action": {
-    "default_popup": "popup.html"
   }
 }
