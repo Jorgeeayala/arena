@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Loader2 } from 'lucide-react';
 
 /**
  * Splash de arranque de la app.
@@ -76,12 +75,7 @@ export default function AppSplashLoader({
           transition={{ duration: 0.4, ease: 'easeOut' }}
         >
           <div className="splash-inner">
-            <motion.div
-              className="splash-logo-wrap"
-              initial={{ opacity: 0, scale: 0.86 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 240, damping: 22, delay: 0.06 }}
-            >
+            <div className="splash-logo-wrap">
               <span className="splash-logo-glow" aria-hidden="true" />
               <img
                 className="splash-logo"
@@ -91,12 +85,9 @@ export default function AppSplashLoader({
                 onLoad={() => setLogoReady(true)}
                 onError={() => setLogoReady(true)}
               />
-            </motion.div>
+            </div>
 
-            <p className="splash-message">
-              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              {message}
-            </p>
+            <p className="splash-message">{message}</p>
 
             <div className="splash-progress" aria-hidden="true">
               <div className="splash-progress-track">

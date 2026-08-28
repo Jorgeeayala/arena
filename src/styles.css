@@ -119,8 +119,6 @@ body {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
   color: #f8fafc;
   padding: 24px 24px calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
@@ -143,21 +141,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: splashLogoFade 0.28s ease-out both;
 }
 
+/* Glow estático: conserva profundidad sin recalcular un blur grande en cada
+   frame, algo especialmente costoso en WebView y equipos con GPU modesta. */
 .splash-logo-glow {
   position: absolute;
-  inset: 14%;
+  inset: 9%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(26, 155, 184, 0.42) 0%, transparent 72%);
-  filter: blur(22px);
+  background: radial-gradient(circle, rgba(26, 155, 184, 0.32) 0%, transparent 70%);
   pointer-events: none;
-  animation: splashGlowPulse 2.4s ease-in-out infinite;
 }
 
-@keyframes splashGlowPulse {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.1); }
+@keyframes splashLogoFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .splash-logo {
@@ -171,9 +170,6 @@ body {
 }
 
 .splash-message {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
   font-size: 13px;
   color: #94a3b8;
   margin: 0;
@@ -199,11 +195,12 @@ body {
   border-radius: 10px;
   background: linear-gradient(90deg, #1d4ed8 0%, #38bdf8 55%, #0ea5b7 100%);
   animation: splashProgress 1.05s ease-in-out infinite;
+  will-change: transform;
 }
 
 @keyframes splashProgress {
-  from { transform: translateX(-115%); }
-  to { transform: translateX(340%); }
+  from { transform: translate3d(-115%, 0, 0); }
+  to { transform: translate3d(340%, 0, 0); }
 }
 
 .app-navbar {
