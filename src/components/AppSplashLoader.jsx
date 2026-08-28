@@ -15,7 +15,7 @@ export default function AppSplashLoader({
   ready = false,
   onFinished = null,
   message = 'Preparando el sistema...',
-  minDurationMs = 600,
+  minDurationMs = 1000,
   maxDurationMs = 3000,
 }) {
   const [showSplash, setShowSplash] = useState(true);
