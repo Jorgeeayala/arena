@@ -12,6 +12,7 @@ import ClientDetail from './screens/ClientDetail';
 import NewClient from './screens/NewClient';
 import AssignClients from './screens/AssignClients';
 import AppSplashLoader from './components/AppSplashLoader';
+import ScreenErrorBoundary from './components/ScreenErrorBoundary';
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
 import { formatPeriodLabel } from './utils';
@@ -678,6 +679,7 @@ export default function App() {
           onPickYear={setYear}
           onPickMonth={setMonth}
           onChangeYear={() => setYear(null)}
+          onChangeMonth={() => setMonth(null)}
           selectedClient={selectedClient}
           onSelectClient={setSelectedClient}
           onBackFromDetail={() => setSelectedClient(null)}
@@ -709,6 +711,7 @@ function PeriodScreens({
   onPickYear,
   onPickMonth,
   onChangeYear,
+  onChangeMonth,
   selectedClient,
   onSelectClient,
   onBackFromDetail,
@@ -835,6 +838,42 @@ function PeriodScreens({
     );
   };
 
+  const screenBoundaryKey = !user
+    ? 'name-picker'
+    : authState.status !== 'authenticated'
+      ? `auth-${user}-${authState.status}`
+      : !year
+        ? `year-picker-${user}`
+        : !month
+          ? `month-picker-${year}`
+          : assignClientsOpen && canAssignClients
+            ? `assign-${year}-${month}`
+            : creatingWithHeaders
+              ? `new-client-${year}-${month}`
+              : selectedClient
+                ? `client-detail-${selectedClient._row}-${year}-${month}`
+                : `client-list-${year}-${month}`;
+
+  // Cada pantalla vuelve a una ruta segura diferente. Cambiar la key desmonta
+  // el boundary que falló para que el error no sobreviva a la navegación.
+  const handleScreenErrorBack = () => {
+    if (!user) {
+      window.location.reload();
+    } else if (authState.status !== 'authenticated' || !year) {
+      onChangeUser();
+    } else if (!month) {
+      onChangeYear();
+    } else if (assignClientsOpen && canAssignClients) {
+      onBackFromAssign();
+    } else if (creatingWithHeaders) {
+      onCancelNewClient();
+    } else if (selectedClient) {
+      onBackFromDetail();
+    } else {
+      onChangeMonth();
+    }
+  };
+
   // mode="popLayout" en vez de "wait": con "wait", la pantalla que
   // salía tenía que desmontarse del todo (y ClientDetail terminar su
   // carga inicial) ANTES de que la nueva empezara a aparecer -- ese
@@ -842,5 +881,9 @@ function PeriodScreens({
   // cliente. Con "popLayout" ambas se animan superpuestas (la que
   // sale se saca del flujo normal así no empuja el layout), sin
   // instante en blanco en el medio.
-  return <AnimatePresence mode="popLayout">{getScreenContent()}</AnimatePresence>;
+  return (
+    <ScreenErrorBoundary key={screenBoundaryKey} onBack={handleScreenErrorBack}>
+      <AnimatePresence mode="popLayout">{getScreenContent()}</AnimatePresence>
+    </ScreenErrorBoundary>
+  );
 }
