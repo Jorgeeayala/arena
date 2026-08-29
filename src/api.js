@@ -1,5 +1,5 @@
-import { BACKEND_URL, API_TOKEN } from './config';
-import { normalizeUserRole } from './utils';
+import { BACKEND_URL, API_TOKEN, STORAGE_KEY_SESSION } from './config';
+import { normalizeUserRole, normalizeSearchText } from './utils';
 import {
   enqueueUpdate,
   configureSaveQueue,
@@ -8,48 +8,162 @@ import {
   getPendingUpdates,
 } from './saveQueue';
 
-// Persistent & in-memory cache for instant navigation & zero latency
-const LOCAL_STORAGE_CACHE_KEY = 'sheets_remote_persistent_cache_v2';
+// Desde v3 sólo se persisten metadatos no sensibles. Las filas completas se
+// conservan exclusivamente en memoria porque pueden contener "Clave MH" y
+// otros datos de clientes.
+const LEGACY_STORAGE_CACHE_KEY = 'sheets_remote_persistent_cache_v2';
+const LOCAL_STORAGE_CACHE_KEY = 'sheets_remote_metadata_cache_v3';
+const SESSION_ERROR_CODES = new Set([
+  'SESSION_REQUIRED',
+  'SESSION_EXPIRED',
+  'SESSION_REVOKED',
+  'PIN_SETUP_REQUIRED',
+]);
 
-function loadPersistentCache() {
+const authFailureListeners = new Set();
+
+class ApiError extends Error {
+  constructor(message, data = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = data.code || 'API_ERROR';
+    this.details = data;
+    this.attemptsRemaining = data.attemptsRemaining;
+    this.lockedUntil = data.lockedUntil;
+  }
+}
+
+function removeLegacySensitiveCache() {
+  try {
+    localStorage.removeItem(LEGACY_STORAGE_CACHE_KEY);
+  } catch {
+    // Si localStorage no está disponible, el caché tampoco puede persistir.
+  }
+}
+
+function loadPersistentMetadata() {
+  removeLegacySensitiveCache();
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
     if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.warn('Error al cargar cache persistente:', e);
+  } catch (error) {
+    console.warn('Error al cargar metadatos persistentes:', error);
   }
   return null;
 }
 
-const cache = loadPersistentCache() || {
-  users: null,
-  years: null,
-  months: {}, // year -> months array
-  read: {},   // `${year}_${sheet}` -> { headers, rows, timestamp }
+const persistentMetadata = loadPersistentMetadata();
+const cache = {
+  users: persistentMetadata?.users || null,
+  years: persistentMetadata?.years || null,
+  months: persistentMetadata?.months || {},
+  read: {},
 };
 
-function saveCache() {
+function saveMetadataCache() {
   try {
-    localStorage.setItem(LOCAL_STORAGE_CACHE_KEY, JSON.stringify(cache));
-  } catch (e) {
-    console.warn('Error al guardar cache persistente:', e);
+    localStorage.setItem(
+      LOCAL_STORAGE_CACHE_KEY,
+      JSON.stringify({
+        users: cache.users,
+        years: cache.years,
+        months: cache.months,
+      })
+    );
+  } catch (error) {
+    console.warn('Error al guardar metadatos persistentes:', error);
   }
 }
 
-// Vuelve a aplicar sobre los datos recién leídos del servidor las ediciones
-// que todavía están en la cola de guardado (sin salir). Sin esto, una
-// revalidación en segundo plano puede devolver la foto vieja de la hoja y
-// "desasignar" visualmente un cliente que acabás de asignar.
+function clearPrivateDataCache() {
+  cache.read = {};
+}
+
+function readStoredSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SESSION);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.token || !parsed?.user?.name) return null;
+    return {
+      token: String(parsed.token),
+      user: {
+        name: String(parsed.user.name),
+        role: normalizeUserRole(parsed.user.role),
+      },
+      pinless: Boolean(parsed.pinless),
+      expiresAt: Number(parsed.expiresAt || 0),
+      idleTimeoutMs: Number(parsed.idleTimeoutMs || 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+let currentSession = readStoredSession();
+
+function normalizeSession(data, fallbackToken = '') {
+  const token = String(data.sessionToken || fallbackToken || '');
+  if (!token || !data.user?.name) {
+    throw new ApiError('Respuesta de sesión incompleta', {
+      code: 'INVALID_SESSION_RESPONSE',
+    });
+  }
+
+  return {
+    token,
+    user: {
+      name: String(data.user.name),
+      role: normalizeUserRole(data.user.role),
+    },
+    pinless: Boolean(data.pinless),
+    expiresAt: Number(data.expiresAt || 0),
+    idleTimeoutMs: Number(data.idleTimeoutMs || 0),
+  };
+}
+
+function storeSession(session) {
+  currentSession = session;
+  try {
+    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session));
+  } catch (error) {
+    console.warn('No se pudo guardar la sesión local:', error);
+  }
+  return session;
+}
+
+function clearStoredSession() {
+  currentSession = null;
+  clearPrivateDataCache();
+  try {
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+  } catch {
+    // La sesión en memoria queda eliminada aunque localStorage no responda.
+  }
+}
+
+function notifyAuthFailure(error) {
+  authFailureListeners.forEach((listener) => {
+    try {
+      listener(error);
+    } catch (listenerError) {
+      console.warn('Error en listener de autenticación:', listenerError);
+    }
+  });
+}
+
+// Reaplica sobre una lectura fresca las escrituras que siguen en cola para no
+// rebobinar visualmente una edición optimista aún no confirmada.
 function withPendingWrites(data, year, sheet) {
   const pendings = getPendingUpdates().filter(
-    (u) => String(u.year) === String(year) && String(u.sheet) === String(sheet)
+    (update) => String(update.year) === String(year) && String(update.sheet) === String(sheet)
   );
   if (!pendings.length) return data;
 
-  const rows = (data.rows || []).map((r) => ({ ...r }));
-  pendings.forEach((u) => {
-    const target = rows.find((r) => r._row === u.row);
-    if (target) target[u.column] = u.value;
+  const rows = (data.rows || []).map((row) => ({ ...row }));
+  pendings.forEach((update) => {
+    const target = rows.find((row) => row._row === update.row);
+    if (target) target[update.column] = update.value;
   });
   return { ...data, rows };
 }
@@ -58,11 +172,8 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 400) {
   let lastError;
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, options);
-      // Leemos como texto primero (no directo .json()) para poder mostrar
-      // la respuesta cruda en el mensaje de error si no es JSON válido --
-      // así se puede diagnosticar sin necesitar cable USB ni DevTools.
-      const rawText = await res.text();
+      const response = await fetch(url, options);
+      const rawText = await response.text();
 
       let data;
       try {
@@ -70,29 +181,29 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 400) {
       } catch {
         const preview = rawText.slice(0, 300).replace(/\s+/g, ' ').trim();
         throw new Error(
-          `Respuesta no es JSON válido (HTTP ${res.status}) desde ${url}. ` +
+          `Respuesta no es JSON válido (HTTP ${response.status}) desde ${url}. ` +
           `Primeros caracteres de la respuesta: "${preview}"`
         );
       }
 
       if (!data.ok) {
-        throw new Error(data.error || 'Error desconocido del servidor');
+        throw new ApiError(data.error || 'Error desconocido del servidor', data);
       }
       return data;
-    } catch (err) {
-      lastError = err;
+    } catch (error) {
+      lastError = error;
       const isNetworkError =
-        err.name === 'TypeError' ||
-        !err.message ||
-        err.message.includes('Failed to fetch') ||
-        err.message.includes('NetworkError') ||
-        err.message.includes('Load failed');
+        error.name === 'TypeError' ||
+        !error.message ||
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('NetworkError') ||
+        error.message.includes('Load failed');
 
       if (isNetworkError && attempt < retries) {
         await new Promise((resolve) => setTimeout(resolve, delay * attempt));
         continue;
       }
-      throw err;
+      throw error;
     }
   }
   throw lastError;
@@ -110,20 +221,30 @@ function assertBackendConfig() {
   }
 }
 
-// Una única vía para lecturas y escrituras. `text/plain` mantiene la petición
-// dentro de las solicitudes CORS simples que acepta Apps Script, mientras que
-// el token viaja en el JSON y deja de formar parte de la URL.
-async function request(body) {
+// Todas las operaciones usan POST simple para Apps Script. Cuando existe una
+// sesión, su token se adjunta automáticamente y nunca se toma el rol desde la UI.
+async function request(body, { handleSessionFailure = true } = {}) {
   assertBackendConfig();
-  return fetchWithRetry(BACKEND_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ ...body, token: API_TOKEN }),
-  });
+  const payload = { ...body, token: API_TOKEN };
+  if (!payload.sessionToken && currentSession?.token) {
+    payload.sessionToken = currentSession.token;
+  }
+
+  try {
+    return await fetchWithRetry(BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    if (handleSessionFailure && SESSION_ERROR_CODES.has(error.code)) {
+      clearStoredSession();
+      notifyAuthFailure(error);
+    }
+    throw error;
+  }
 }
 
-// La cola de guardado usa la misma función (con retries y token) para mandar
-// los batches de actualizaciones en segundo plano.
 configureSaveQueue({ post: request });
 
 function getUserName(item) {
@@ -134,138 +255,177 @@ function getUserName(item) {
   ).trim();
 }
 
-function getUserRole(item) {
-  if (!item || typeof item !== 'object') return 'USUARIO';
-  return normalizeUserRole(item.role ?? item.ROLE ?? item.ROL ?? item.Rol ?? item.rol);
+function isSameUser(left, right) {
+  return normalizeSearchText(left) === normalizeSearchText(right);
 }
 
 export const api = {
-  ping: () => request({ action: 'ping' }),
+  ping: () => request({ action: 'ping' }, { handleSessionFailure: false }),
 
-  listUsers: async (force = false) => {
-    if (!force && cache.users) {
-      return cache.users.map(getUserName).filter(Boolean);
+  login: async (user, pin = '') => {
+    const previousUser = currentSession?.user?.name || '';
+    const data = await request(
+      { action: 'login', user, pin },
+      { handleSessionFailure: false }
+    );
+    const session = normalizeSession(data);
+    if (previousUser && !isSameUser(previousUser, session.user.name)) {
+      clearPrivateDataCache();
     }
-    const d = await request({ action: 'users' });
-    cache.users = d.users || [];
-    saveCache();
-    return (d.users || []).map(getUserName).filter(Boolean);
+    return storeSession(session);
   },
 
-  listUsersWithRoles: async (force = false) => {
-    let rawUsers = cache.users;
-    if (force || !rawUsers) {
-      const d = await request({ action: 'users' });
-      rawUsers = d.users || [];
-      cache.users = rawUsers;
-      saveCache();
+  setupPin: async (user, pin) => {
+    clearStoredSession();
+    const data = await request(
+      { action: 'setupPin', user, pin },
+      { handleSessionFailure: false }
+    );
+    return storeSession(normalizeSession(data));
+  },
+
+  validateSession: async ({ notifyOnFailure = true } = {}) => {
+    if (!currentSession?.token) {
+      throw new ApiError('Sesión requerida', { code: 'SESSION_REQUIRED' });
     }
-    return (rawUsers || [])
-      .map((item) => ({ name: getUserName(item), role: getUserRole(item) }))
-      .filter((u) => u.name);
+
+    try {
+      const data = await request(
+        {
+          action: 'session',
+          sessionToken: currentSession.token,
+        },
+        { handleSessionFailure: notifyOnFailure }
+      );
+      return storeSession(normalizeSession(data, currentSession.token));
+    } catch (error) {
+      if (!notifyOnFailure && SESSION_ERROR_CODES.has(error.code)) {
+        clearStoredSession();
+      }
+      throw error;
+    }
+  },
+
+  logout: async () => {
+    const token = currentSession?.token || '';
+    try {
+      if (token) {
+        await request(
+          { action: 'logout', sessionToken: token },
+          { handleSessionFailure: false }
+        );
+      }
+    } finally {
+      clearStoredSession();
+    }
+  },
+
+  clearSession: clearStoredSession,
+
+  getStoredSession: () => {
+    if (!currentSession) return null;
+    return {
+      ...currentSession,
+      user: { ...currentSession.user },
+    };
+  },
+
+  onAuthFailure: (listener) => {
+    authFailureListeners.add(listener);
+    return () => authFailureListeners.delete(listener);
+  },
+
+  listUsers: async (force = false) => {
+    if (!force && cache.users) return cache.users.map(getUserName).filter(Boolean);
+
+    const data = await request(
+      { action: 'users' },
+      { handleSessionFailure: false }
+    );
+    cache.users = data.users || [];
+    saveMetadataCache();
+    return cache.users.map(getUserName).filter(Boolean);
   },
 
   listYears: async (force = false) => {
     if (!force && cache.years) {
-      // Revalidar en segundo plano para captar nuevos años si se crean
-      request({ action: 'years' }).then((d) => {
-        if (d.years) {
-          cache.years = d.years;
-          saveCache();
+      request({ action: 'years' }).then((data) => {
+        if (data.years) {
+          cache.years = data.years;
+          saveMetadataCache();
         }
       }).catch(() => {});
       return cache.years;
     }
-    const d = await request({ action: 'years' });
-    cache.years = d.years;
-    saveCache();
-    return d.years;
+    const data = await request({ action: 'years' });
+    cache.years = data.years || [];
+    saveMetadataCache();
+    return cache.years;
   },
 
   listMonths: async (year, force = false) => {
     if (!force && cache.months[year]) {
-      // Revalidar en segundo plano para descubrir nuevas hojas creadas en Google Sheets
-      request({ action: 'months', year }).then((d) => {
-        if (d.months) {
-          cache.months[year] = d.months;
-          saveCache();
+      request({ action: 'months', year }).then((data) => {
+        if (data.months) {
+          cache.months[year] = data.months;
+          saveMetadataCache();
         }
       }).catch(() => {});
       return cache.months[year];
     }
-    const d = await request({ action: 'months', year });
-    cache.months[year] = d.months;
-    saveCache();
-    return d.months;
+    const data = await request({ action: 'months', year });
+    cache.months[year] = data.months || [];
+    saveMetadataCache();
+    return cache.months[year];
   },
 
   readClients: async (year, sheet, force = false) => {
     const key = `${year}_${sheet}`;
     if (!force && cache.read[key]) {
-      // Revalidar en segundo plano para incorporar columnas nuevas o filas creadas en la planilla
       request({ action: 'read', year, sheet }).then((data) => {
-        if (data && data.headers) {
+        if (data?.headers) {
           cache.read[key] = withPendingWrites(
             { headers: data.headers || [], rows: data.rows || [] },
             year,
             sheet
           );
-          saveCache();
         }
       }).catch(() => {});
       return cache.read[key];
     }
+
     const data = await request({ action: 'read', year, sheet });
     cache.read[key] = withPendingWrites(
       { headers: data.headers || [], rows: data.rows || [] },
       year,
       sheet
     );
-    saveCache();
     return cache.read[key];
   },
 
-  updateCell: async ({ year, sheet, user, row, column, value }) => {
-    // Actualización optimista inmediata en la memoria local (esto es lo que
-    // hace que la UI se sienta instantánea, no depende de la red)
+  updateCell: async ({ year, sheet, row, column, value }) => {
     const key = `${year}_${sheet}`;
     if (cache.read[key]) {
-      const targetRow = cache.read[key].rows.find((r) => r._row === row);
-      if (targetRow) {
-        targetRow[column] = value;
-      }
-      saveCache();
+      const targetRow = cache.read[key].rows.find((rowItem) => rowItem._row === row);
+      if (targetRow) targetRow[column] = value;
     }
 
-    // La petición real NO se manda al toque: se encola. Si llegan varias
-    // ediciones juntas (varios campos, varias tarjetas con swipe rápido),
-    // se agrupan en una sola petición al backend en vez de disparar N
-    // peticiones en paralelo que compiten por el lock de la hoja en Apps
-    // Script (esa competencia es la causa principal de la lentitud actual).
-    return enqueueUpdate({ year, sheet, user, row, column, value });
+    return enqueueUpdate({ year, sheet, row, column, value });
   },
 
-  // Estado de la cola en segundo plano ('idle' | 'syncing'), útil para un
-  // indicador sutil de sincronización en vez de un loader bloqueante.
   onSyncStatusChange: onQueueStatusChange,
-
-  // Fuerza el guardado inmediato de lo que esté pendiente en la cola (por
-  // ejemplo, antes de salir de la pantalla de detalle).
   flushPendingSaves: flushNow,
 
-  createClient: async ({ year, sheet, user, values }) => {
-    const res = await request({ action: 'create', year, sheet, user, values });
+  createClient: async ({ year, sheet, values }) => {
+    const response = await request({ action: 'create', year, sheet, values });
     const key = `${year}_${sheet}`;
-    
-    if (res.row && cache.read[key]) {
-      // Inserción optimista del nuevo cliente en el cache de la lista
-      cache.read[key].rows.unshift({ ...values, _row: res.row });
-    } else {
-      delete cache.read[key]; // Forzar recarga completa en la siguiente lectura
-    }
-    saveCache();
 
-    return res;
+    if (response.row && cache.read[key]) {
+      cache.read[key].rows.unshift({ ...values, _row: response.row });
+    } else {
+      delete cache.read[key];
+    }
+    return response;
   },
 
   clearCache: () => {
@@ -275,9 +435,9 @@ export const api = {
     cache.read = {};
     try {
       localStorage.removeItem(LOCAL_STORAGE_CACHE_KEY);
-    } catch (e) {
-      console.warn('Error al borrar cache persistente:', e);
+      localStorage.removeItem(LEGACY_STORAGE_CACHE_KEY);
+    } catch (error) {
+      console.warn('Error al borrar caché local:', error);
     }
-  }
+  },
 };
-

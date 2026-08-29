@@ -129,7 +129,9 @@ function orderUsers(list, order) {
   return [...ordered, ...newcomers];
 }
 
-export function ClientsProvider({ user, year, month, children }) {
+export function ClientsProvider({ user, userRole, year, month, children }) {
+  const canAssignClients = userRole === 'ADMINISTRADOR' || userRole === 'SUPERUSUARIO';
+
   // --- Datos de la planilla (fuente única) -------------------------------
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
@@ -531,8 +533,8 @@ export function ClientsProvider({ user, year, month, children }) {
   // Encola una sola celda en la cola de guardado (sin actualizar el state).
   const queueCellUpdate = useCallback(
     ({ row, column, value }) =>
-      api.updateCell({ year, sheet: month, user, row, column, value }),
-    [year, month, user]
+      api.updateCell({ year, sheet: month, row, column, value }),
+    [year, month]
   );
 
   const flushPendingSaves = useCallback(() => api.flushPendingSaves(), []);
@@ -556,7 +558,7 @@ export function ClientsProvider({ user, year, month, children }) {
       try {
         await Promise.all(
           Object.entries(updates).map(([column, value]) =>
-            api.updateCell({ year, sheet: month, user, row: rowNum, column, value })
+            api.updateCell({ year, sheet: month, row: rowNum, column, value })
           )
         );
         markRowSaved(rowNum);
@@ -566,22 +568,27 @@ export function ClientsProvider({ user, year, month, children }) {
         throw err;
       }
     },
-    [applyLocalUpdates, year, month, user]
+    [applyLocalUpdates, year, month]
   );
 
   // Atajo para la columna "Encargado" (lo que usa Asignar clientes).
   const setEncargado = useCallback(
     (rowNum, value) => {
+      if (!canAssignClients) {
+        return Promise.reject(new Error('Tu rol no permite cambiar el Encargado'));
+      }
       if (!encargadoCol) return Promise.resolve();
       return saveRowUpdates(rowNum, { [encargadoCol]: value });
     },
-    [encargadoCol, saveRowUpdates]
+    [canAssignClients, encargadoCol, saveRowUpdates]
   );
 
   const value = useMemo(
     () => ({
-      // período
+      // período y permisos derivados de la sesión
       user,
+      userRole,
+      canAssignClients,
       year,
       month,
       // datos
@@ -643,6 +650,8 @@ export function ClientsProvider({ user, year, month, children }) {
     }),
     [
       user,
+      userRole,
+      canAssignClients,
       year,
       month,
       headers,

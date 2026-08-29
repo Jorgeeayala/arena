@@ -6,9 +6,10 @@
 export const BACKEND_URL = String(import.meta.env.VITE_BACKEND_URL || '').trim();
 export const API_TOKEN = String(import.meta.env.VITE_API_TOKEN || '').trim();
 
-// Nombre de la clave que usamos en localStorage para guardar el nombre
-// de usuario elegido la primera vez (queda "fijo" desde ese momento).
+// El nombre elegido se conserva para no pedirlo en cada apertura. La sesión
+// individual tiene su propia clave y expira según lo que valide Apps Script.
 export const STORAGE_KEY_USER = 'sheets-remote:user';
+export const STORAGE_KEY_SESSION = 'sheets-remote:session-v1';
 
 // --- Marangatu (login de la SET) ---------------------------------------
 // Página que abre el botón de la tarjeta de cliente. Si la extensión

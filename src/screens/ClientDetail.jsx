@@ -119,7 +119,6 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
         api.updateCell({
           year,
           sheet: month,
-          user,
           row: client._row,
           column,
           value: valToSave,
@@ -132,7 +131,6 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
             api.updateCell({
               year,
               sheet: month,
-              user,
               row: client._row,
               column: col,
               value: val,
@@ -230,8 +228,12 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
         animate="visible"
       >
         {fields.map((field) => {
-          const fieldType = getFieldType(field, values[field]);
           const isEncargadoField = Boolean(encargadoCol) && field === encargadoCol;
+          // Encargado tiene su rama propia y nunca debe caer en los controles
+          // genéricos/híbridos, especialmente para el rol USUARIO.
+          const fieldType = isEncargadoField
+            ? 'assignment'
+            : getFieldType(field, values[field]);
           const isSaving = savingField === field;
           const isJustSaved = savedField === field;
           const isActive = activeField === field;
@@ -381,7 +383,8 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
                   </div>
                 </div>
               ) : isEncargadoField ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                canAssignClients ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {/* Encargado con el equipo COMPLETO: los que participan del
                       reparto automático y los que no. Elegir a uno de afuera
                       es una asignación manual y es totalmente válida. */}
@@ -454,6 +457,11 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
                     </motion.button>
                   </div>
                 </div>
+                ) : (
+                  <div className="field-readonly-value" title="Solo administradores pueden cambiar este campo">
+                    {encargadoActual || 'Sin asignar'}
+                  </div>
+                )
               ) : (
                 <div className="field-input-row">
                   <input

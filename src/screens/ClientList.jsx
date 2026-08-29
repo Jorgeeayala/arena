@@ -92,6 +92,7 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
   isTouchDevice,
   headers,
   hasEncargadoCol,
+  canAssignClients,
   dataIndex,
   virtualStyle,
   teamUsers,
@@ -359,52 +360,61 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
                     equipo: la lista de participantes acota sólo el reparto
                     automático, no a quién se le puede dar un cliente. */}
                 {hasEncargadoCol ? (
-                  // stopPropagation: el click no debe abrir el detalle del
-                  // cliente, y el pointerdown no debe arrancar el swipe de
-                  // la tarjeta cuando el dedo cae sobre el desplegable.
-                  <span
-                    className="card-encargado-wrap"
-                    onClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                  >
-                    <UserCheck size={11} />
-                    <select
-                      className={`card-encargado-select ${assignedUser ? '' : 'is-empty'}`}
-                      value={assignedUser || ''}
-                      disabled={savingEncargado}
-                      title={
-                        assignedUser
-                          ? `Encargado: ${assignedUser} · cambialo por quien quieras del equipo`
-                          : 'Sin asignar · elegí un encargado'
-                      }
-                      onChange={(e) => onSetEncargado(row._row, e.target.value)}
+                  canAssignClients ? (
+                    // stopPropagation: el click no debe abrir el detalle del
+                    // cliente, y el pointerdown no debe iniciar el swipe.
+                    <span
+                      className="card-encargado-wrap"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
                     >
-                      <option value="">Sin asignar</option>
-                      {/* Un nombre que ya no está en el equipo sincronizado se
-                          muestra igual, en vez de blanquearlo. */}
-                      {assignedUser && !(teamUsers || []).includes(assignedUser) && (
-                        <option value={assignedUser}>{assignedUser} (fuera del equipo)</option>
-                      )}
-                      {(repartoUsers || []).length > 0 && (
-                        <optgroup label="Participan del reparto">
-                          {(repartoUsers || []).map((u) => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {nonParticipants.length > 0 && (
-                        <optgroup label="No participan (asignación manual)">
-                          {nonParticipants.map((u) => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                  </span>
+                      <UserCheck size={11} />
+                      <select
+                        className={`card-encargado-select ${assignedUser ? '' : 'is-empty'}`}
+                        value={assignedUser || ''}
+                        disabled={savingEncargado}
+                        title={
+                          assignedUser
+                            ? `Encargado: ${assignedUser} · cambialo por quien quieras del equipo`
+                            : 'Sin asignar · elegí un encargado'
+                        }
+                        onChange={(e) => onSetEncargado(row._row, e.target.value)}
+                      >
+                        <option value="">Sin asignar</option>
+                        {/* Un nombre que ya no está en el equipo sincronizado se
+                            muestra igual, en vez de blanquearlo. */}
+                        {assignedUser && !(teamUsers || []).includes(assignedUser) && (
+                          <option value={assignedUser}>{assignedUser} (fuera del equipo)</option>
+                        )}
+                        {(repartoUsers || []).length > 0 && (
+                          <optgroup label="Participan del reparto">
+                            {(repartoUsers || []).map((u) => (
+                              <option key={u} value={u}>
+                                {u}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {nonParticipants.length > 0 && (
+                          <optgroup label="No participan (asignación manual)">
+                            {nonParticipants.map((u) => (
+                              <option key={u} value={u}>
+                                {u}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </span>
+                  ) : (
+                    <span
+                      className={`assigned-user-badge ${assignedUser ? '' : 'assigned-user-badge-empty'}`}
+                      title={assignedUser ? `Encargado: ${assignedUser}` : 'Sin encargado'}
+                    >
+                      <UserCheck size={11} />
+                      {assignedUser || 'Sin encargado'}
+                    </span>
+                  )
                 ) : null}
               </div>
             </div>
@@ -539,6 +549,7 @@ export default function ClientList({ onSelect, onNewClient }) {
   // instante en la otra, y los filtros son exactamente los mismos.
   const {
     user,
+    canAssignClients,
     year,
     month,
     headers,
@@ -1377,6 +1388,7 @@ export default function ClientList({ onSelect, onNewClient }) {
                     isTouchDevice={isTouchDevice}
                     headers={headers}
                     hasEncargadoCol={Boolean(encargadoCol)}
+                    canAssignClients={canAssignClients}
                     teamUsers={teamUsers}
                     repartoUsers={repartoUsers}
                     onSetEncargado={setEncargado}

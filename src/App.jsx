@@ -1,8 +1,10 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import NamePicker from './screens/NamePicker';
+import PinLogin from './screens/PinLogin';
+import PinSetup from './screens/PinSetup';
 import YearPicker from './screens/YearPicker';
 import MonthPicker from './screens/MonthPicker';
 import ClientList from './screens/ClientList';
@@ -12,10 +14,19 @@ import AssignClients from './screens/AssignClients';
 import AppSplashLoader from './components/AppSplashLoader';
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
-import { formatPeriodLabel, normalizeSearchText } from './utils';
+import { formatPeriodLabel } from './utils';
 import { api } from './api';
 import { Calendar, User, Sun, Moon, Menu, X, UserCog } from 'lucide-react';
 import './styles.css';
+
+const INITIAL_AUTH_STATE = {
+  status: 'anonymous',
+  session: null,
+  error: '',
+  errorCode: '',
+  attemptsRemaining: undefined,
+  lockedUntil: 0,
+};
 
 const pageVariants = {
   initial: { opacity: 0, y: 22, scale: 0.98 },
@@ -33,6 +44,35 @@ const pageVariants = {
   },
 };
 
+function authStateFromError(error, defaultMessage = 'No se pudo validar el acceso') {
+  const code = error?.code || 'AUTH_ERROR';
+  const requiresInitialPin = code === 'PIN_SETUP_REQUIRED';
+  return {
+    status: requiresInitialPin ? 'setup-pin' : 'needs-pin',
+    session: null,
+    error: code === 'PIN_REQUIRED' || requiresInitialPin
+      ? ''
+      : (error?.message || defaultMessage),
+    errorCode: code,
+    attemptsRemaining: Number.isInteger(error?.attemptsRemaining)
+      ? error.attemptsRemaining
+      : undefined,
+    lockedUntil: Number(error?.lockedUntil || 0),
+  };
+}
+
+function pinSetupStateFromError(error) {
+  const code = error?.code || 'PIN_SETUP_ERROR';
+  return {
+    status: code === 'PIN_ALREADY_CONFIGURED' ? 'needs-pin' : 'setup-pin',
+    session: null,
+    error: error?.message || 'No se pudo configurar el PIN',
+    errorCode: code,
+    attemptsRemaining: undefined,
+    lockedUntil: 0,
+  };
+}
+
 export default function App() {
   const [user, setUser] = useState(() => localStorage.getItem(STORAGE_KEY_USER));
   const [year, setYear] = useState(null);
@@ -44,39 +84,216 @@ export default function App() {
   const [initialScreenReady, setInitialScreenReady] = useState(false);
   const markInitialScreenReady = useCallback(() => setInitialScreenReady(true), []);
 
-  // El nombre elegido sigue persistido en el dispositivo, pero el rol se
-  // confirma una vez contra Drive en cada arranque (y al cambiar de usuario).
-  // Guardamos también a quién pertenece el resultado para no mostrar durante
-  // la consulta el permiso que tenía el usuario anterior.
-  const [roleCheck, setRoleCheck] = useState({ user: null, role: null });
-  const userRole = roleCheck.user === user ? roleCheck.role : null;
-  const roleReady = !user || roleCheck.user === user;
-  const initialContentReady = initialScreenReady && roleReady;
+  const [authState, setAuthState] = useState(() => ({
+    status: user ? 'checking' : 'anonymous',
+    session: null,
+    error: '',
+    errorCode: '',
+    attemptsRemaining: undefined,
+    lockedUntil: 0,
+  }));
+  const [authGeneration, setAuthGeneration] = useState(0);
+  const authAttemptRef = useRef(0);
+  const authenticated = authState.status === 'authenticated';
+  const userRole = authenticated ? authState.session?.user?.role : null;
+  const activeSessionToken = authState.session?.token || '';
+  const activeSessionExpiresAt = Number(authState.session?.expiresAt || 0);
+  const activeSessionIdleMs = Number(authState.session?.idleTimeoutMs || 0);
   const canAssignClients = userRole === 'SUPERUSUARIO' || userRole === 'ADMINISTRADOR';
+  const authReady = !user || authState.status !== 'checking';
+  const initialContentReady = initialScreenReady && authReady;
 
+  const resetPrivateNavigation = useCallback(() => {
+    setYear(null);
+    setMonth(null);
+    setSelectedClient(null);
+    setCreatingWithHeaders(null);
+    setAssignClientsOpen(false);
+    setMobileMenuOpen(false);
+  }, []);
+
+  const restartAuthentication = useCallback(() => {
+    api.clearSession();
+    resetPrivateNavigation();
+    setAuthState((previous) => ({
+      ...previous,
+      status: 'checking',
+      session: null,
+      error: '',
+      errorCode: '',
+      attemptsRemaining: undefined,
+      lockedUntil: 0,
+    }));
+    setAuthGeneration((value) => value + 1);
+  }, [resetPrivateNavigation]);
+
+  // Primero intenta recuperar una sesión todavía válida. Si no existe, envía
+  // un login sin PIN: el backend lo acepta únicamente para una cuenta sin hash
+  // cuando ALLOW_PINLESS_LOGIN=true; una cuenta con PIN responde PIN_REQUIRED.
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      api.clearSession();
+      return;
+    }
 
+    const attemptId = ++authAttemptRef.current;
     let cancelled = false;
-    // `true` evita el caché persistente: los cambios hechos en la columna ROL
-    // deben aplicarse en la siguiente apertura de la app.
-    api.listUsersWithRoles(true)
-      .then((list) => {
-        if (cancelled) return;
-        const normalizedUser = normalizeSearchText(user);
-        const match = list.find((item) => normalizeSearchText(item.name) === normalizedUser);
-        setRoleCheck({ user, role: match ? match.role : 'USUARIO' });
-      })
-      .catch(() => {
-        // Ante un fallo de red se usa el permiso más restrictivo y se deja que
-        // el loader continúe; nunca se concede un rol administrativo por error.
-        if (!cancelled) setRoleCheck({ user, role: 'USUARIO' });
+
+    const applySession = (session) => {
+      if (cancelled || authAttemptRef.current !== attemptId) return;
+      setAuthState({
+        status: 'authenticated',
+        session,
+        error: '',
+        errorCode: '',
+        attemptsRemaining: undefined,
+        lockedUntil: 0,
+      });
+    };
+
+    async function authenticate() {
+      setAuthState({
+        status: 'checking',
+        session: null,
+        error: '',
+        errorCode: '',
+        attemptsRemaining: undefined,
+        lockedUntil: 0,
       });
 
+      const stored = api.getStoredSession();
+      if (stored?.user?.name === user) {
+        try {
+          applySession(await api.validateSession({ notifyOnFailure: false }));
+          return;
+        } catch {
+          // La sesión vencida se elimina en silencio y luego se intenta login.
+        }
+      } else if (stored) {
+        api.clearSession();
+      }
+
+      try {
+        applySession(await api.login(user, ''));
+      } catch (error) {
+        if (!cancelled && authAttemptRef.current === attemptId) {
+          setAuthState(authStateFromError(error));
+        }
+      }
+    }
+
+    authenticate();
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, authGeneration]);
+
+  // Cualquier rechazo de sesión durante una lectura o escritura vuelve a
+  // ejecutar el flujo de acceso. Un usuario sin PIN en modo testing entra de
+  // nuevo automáticamente; uno con PIN vuelve a la pantalla protegida.
+  useEffect(() => api.onAuthFailure(restartAuthentication), [restartAuthentication]);
+
+  // Mantiene sincronizada la inactividad visible con Apps Script. Mientras la
+  // persona usa la app se valida la sesión periódicamente; al dejarla abierta
+  // sin actividad se limpia inmediatamente el contenido privado en memoria.
+  useEffect(() => {
+    if (!authenticated || !activeSessionToken) return undefined;
+
+    const idleTimeoutMs = Math.max(activeSessionIdleMs, 60_000);
+    const heartbeatIntervalMs = Math.min(10 * 60_000, Math.max(60_000, idleTimeoutMs / 3));
+    let lastActivityAt = Date.now();
+    let lastServerCheckAt = Date.now();
+    let idleTimer;
+    let checkingServer = false;
+    let stopped = false;
+
+    const expireLocally = () => {
+      if (stopped) return;
+      restartAuthentication();
+    };
+
+    const scheduleIdleCheck = () => {
+      clearTimeout(idleTimer);
+      const remaining = idleTimeoutMs - (Date.now() - lastActivityAt);
+      if (remaining <= 0) {
+        expireLocally();
+        return;
+      }
+      idleTimer = setTimeout(expireLocally, remaining);
+    };
+
+    const checkServerSession = async () => {
+      if (checkingServer || stopped) return;
+      checkingServer = true;
+      lastServerCheckAt = Date.now();
+      try {
+        const refreshed = await api.validateSession();
+        if (!stopped) {
+          setAuthState((previous) =>
+            previous.status === 'authenticated'
+              ? { ...previous, session: refreshed }
+              : previous
+          );
+        }
+      } catch {
+        // api.js notifica el rechazo y restartAuthentication hace la limpieza.
+      } finally {
+        checkingServer = false;
+      }
+    };
+
+    const recordActivity = () => {
+      const now = Date.now();
+      if (now - lastActivityAt >= idleTimeoutMs) {
+        expireLocally();
+        return;
+      }
+      lastActivityAt = now;
+      scheduleIdleCheck();
+      if (now - lastServerCheckAt >= heartbeatIntervalMs) checkServerSession();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') recordActivity();
+    };
+
+    ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
+      window.addEventListener(eventName, recordActivity, { passive: true });
+    });
+    document.addEventListener('visibilitychange', handleVisibility);
+    scheduleIdleCheck();
+
+    const heartbeat = setInterval(() => {
+      if (
+        document.visibilityState === 'visible' &&
+        Date.now() - lastActivityAt < idleTimeoutMs
+      ) {
+        checkServerSession();
+      }
+    }, heartbeatIntervalMs);
+
+    const maxRemaining = activeSessionExpiresAt - Date.now();
+    const maximumTimer = maxRemaining > 0
+      ? setTimeout(expireLocally, maxRemaining)
+      : setTimeout(expireLocally, 0);
+
+    return () => {
+      stopped = true;
+      clearTimeout(idleTimer);
+      clearTimeout(maximumTimer);
+      clearInterval(heartbeat);
+      ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
+        window.removeEventListener(eventName, recordActivity);
+      });
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [
+    authenticated,
+    activeSessionToken,
+    activeSessionExpiresAt,
+    activeSessionIdleMs,
+    restartAuthentication,
+  ]);
 
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('app-theme');
@@ -144,7 +361,81 @@ export default function App() {
   }, [year, month, selectedClient, creatingWithHeaders, assignClientsOpen]);
 
   function handlePickUser(chosenUser) {
+    localStorage.setItem(STORAGE_KEY_USER, chosenUser);
     setUser(chosenUser);
+  }
+
+  async function handlePinSubmit(pin) {
+    const attemptId = ++authAttemptRef.current;
+    setAuthState((previous) => ({
+      ...previous,
+      status: 'submitting',
+      error: '',
+      errorCode: '',
+    }));
+
+    try {
+      const session = await api.login(user, pin);
+      if (authAttemptRef.current !== attemptId) return;
+      setAuthState({
+        status: 'authenticated',
+        session,
+        error: '',
+        errorCode: '',
+        attemptsRemaining: undefined,
+        lockedUntil: 0,
+      });
+    } catch (error) {
+      if (authAttemptRef.current === attemptId) {
+        setAuthState(authStateFromError(error));
+      }
+    }
+  }
+
+  async function handleInitialPinSetup(pin) {
+    const attemptId = ++authAttemptRef.current;
+    setAuthState((previous) => ({
+      ...previous,
+      status: 'setting-pin',
+      error: '',
+      errorCode: '',
+    }));
+
+    try {
+      const session = await api.setupPin(user, pin);
+      if (authAttemptRef.current !== attemptId) return;
+      setAuthState({
+        status: 'authenticated',
+        session,
+        error: '',
+        errorCode: '',
+        attemptsRemaining: undefined,
+        lockedUntil: 0,
+      });
+    } catch (error) {
+      if (authAttemptRef.current === attemptId) {
+        setAuthState(pinSetupStateFromError(error));
+      }
+    }
+  }
+
+  async function handleChangeUser() {
+    authAttemptRef.current += 1;
+    try {
+      await api.flushPendingSaves();
+    } catch {
+      // Si la sesión ya venció, la cola informa su propio error y se limpia.
+    }
+    try {
+      await api.logout();
+    } catch {
+      api.clearSession();
+    }
+
+    resetPrivateNavigation();
+    localStorage.removeItem(STORAGE_KEY_USER);
+    setAuthState({ ...INITIAL_AUTH_STATE });
+    setUser(null);
   }
 
   // Navbar for authenticated screens
@@ -253,10 +544,7 @@ export default function App() {
               <motion.button
                 className="pill-btn"
                 title={`Usuario actual: ${user} (Haz clic para cambiar de usuario)`}
-                onClick={() => {
-                  setUser(null);
-                  localStorage.removeItem(STORAGE_KEY_USER);
-                }}
+                onClick={handleChangeUser}
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
                 style={{ cursor: 'pointer', gap: '6px' }}
@@ -364,14 +652,29 @@ export default function App() {
         minDurationMs={600}
         maxDurationMs={3000}
       />
-      {renderNavbar()}
-      <ClientsProvider user={user} year={year} month={month}>
+      {authenticated && renderNavbar()}
+      {authenticated && authState.session?.pinless && (
+        <div className="auth-test-banner" role="status">
+          Modo de prueba: este usuario ingresó sin PIN
+        </div>
+      )}
+      <ClientsProvider
+        user={authenticated ? user : null}
+        userRole={userRole}
+        year={authenticated ? year : null}
+        month={authenticated ? month : null}
+      >
         <PeriodScreens
           user={user}
+          authState={authState}
+          canAssignClients={canAssignClients}
           onInitialContentReady={markInitialScreenReady}
           year={year}
           month={month}
           onPickUser={handlePickUser}
+          onPinSubmit={handlePinSubmit}
+          onPinSetup={handleInitialPinSetup}
+          onChangeUser={handleChangeUser}
           onPickYear={setYear}
           onPickMonth={setMonth}
           onChangeYear={() => setYear(null)}
@@ -381,7 +684,7 @@ export default function App() {
           creatingWithHeaders={creatingWithHeaders}
           onNewClient={setCreatingWithHeaders}
           onCancelNewClient={() => setCreatingWithHeaders(null)}
-          assignClientsOpen={assignClientsOpen}
+          assignClientsOpen={canAssignClients && assignClientsOpen}
           onBackFromAssign={() => setAssignClientsOpen(false)}
         />
       </ClientsProvider>
@@ -394,10 +697,15 @@ export default function App() {
 // y los filtros son los mismos para la lista y para "Asignar clientes".
 function PeriodScreens({
   user,
+  authState,
+  canAssignClients,
   onInitialContentReady,
   year,
   month,
   onPickUser,
+  onPinSubmit,
+  onPinSetup,
+  onChangeUser,
   onPickYear,
   onPickMonth,
   onChangeYear,
@@ -421,6 +729,40 @@ function PeriodScreens({
       );
     }
 
+    if (authState.status === 'setup-pin' || authState.status === 'setting-pin') {
+      return (
+        <motion.div key={`pin-setup-${user}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+          <PinSetup
+            user={user}
+            status={authState.status}
+            error={authState.error}
+            errorCode={authState.errorCode}
+            onSubmit={onPinSetup}
+            onChangeUser={onChangeUser}
+            onReady={onInitialContentReady}
+          />
+        </motion.div>
+      );
+    }
+
+    if (authState.status !== 'authenticated') {
+      return (
+        <motion.div key={`pin-login-${user}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+          <PinLogin
+            user={user}
+            status={authState.status}
+            error={authState.error}
+            errorCode={authState.errorCode}
+            attemptsRemaining={authState.attemptsRemaining}
+            lockedUntil={authState.lockedUntil}
+            onSubmit={onPinSubmit}
+            onChangeUser={onChangeUser}
+            onReady={onInitialContentReady}
+          />
+        </motion.div>
+      );
+    }
+
     if (!year) {
       return (
         <motion.div key="year-picker" variants={pageVariants} initial="initial" animate="animate" exit="exit">
@@ -437,7 +779,7 @@ function PeriodScreens({
       );
     }
 
-    if (assignClientsOpen) {
+    if (assignClientsOpen && canAssignClients) {
       return (
         <motion.div key={`assign-clients-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
           <AssignClients onBack={onBackFromAssign} />
@@ -449,9 +791,9 @@ function PeriodScreens({
       return (
         <motion.div key={`new-client-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
           <NewClient
-            user={user}
             year={year}
             month={month}
+            canAssignClients={canAssignClients}
             headers={creatingWithHeaders}
             onCancel={onCancelNewClient}
             onCreated={() => {

@@ -25,8 +25,13 @@
 
 const FLUSH_DELAY_MS = 300; // ventana para agrupar ediciones rápidas
 const MAX_RETRIES = 3;
+const NON_RETRYABLE_CODES = new Set([
+  'SESSION_REQUIRED',
+  'SESSION_EXPIRED',
+  'SESSION_REVOKED',
+]);
 
-let pending = new Map(); // key -> { year, sheet, user, row, column, value, resolvers[], rejecters[] }
+let pending = new Map(); // key -> { year, sheet, row, column, value, resolvers[], rejecters[] }
 let flushTimer = null;
 let flushing = false;
 let postFn = null; // se inyecta desde api.js para evitar import circular
@@ -70,7 +75,7 @@ function scheduleFlush() {
   }, FLUSH_DELAY_MS);
 }
 
-export function enqueueUpdate({ year, sheet, user, row, column, value }) {
+export function enqueueUpdate({ year, sheet, row, column, value }) {
   if (!postFn) {
     return Promise.reject(new Error('saveQueue no fue configurada (falta configureSaveQueue).'));
   }
@@ -82,14 +87,12 @@ export function enqueueUpdate({ year, sheet, user, row, column, value }) {
     if (existing) {
       // Coalescing: pisa el valor anterior, no se manda dos veces.
       existing.value = value;
-      existing.user = user;
       existing.resolvers.push(resolve);
       existing.rejecters.push(reject);
     } else {
       pending.set(key, {
         year,
         sheet,
-        user,
         row,
         column,
         value,
@@ -123,10 +126,9 @@ export function getPendingUpdates() {
 // algún item puntual falló del lado del servidor, sólo se reintenta/marca
 // ESE item, no el lote entero.
 async function sendBatch(batch) {
-  const updates = batch.map(({ year, sheet, user, row, column, value }) => ({
+  const updates = batch.map(({ year, sheet, row, column, value }) => ({
     year,
     sheet,
-    user,
     row,
     column,
     value,
@@ -144,6 +146,7 @@ async function sendBatch(batch) {
       break;
     } catch (err) {
       lastErr = err;
+      if (NON_RETRYABLE_CODES.has(err.code)) break;
       if (attempt < MAX_RETRIES) {
         await new Promise((r) => setTimeout(r, 400 * attempt));
       }

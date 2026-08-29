@@ -598,6 +598,173 @@ body {
   transform: translateY(0);
 }
 
+/* Autenticación individual */
+.auth-test-banner {
+  position: sticky;
+  top: 61px;
+  z-index: 39;
+  width: 100%;
+  padding: 7px 16px;
+  background-color: #fef3c7;
+  border-bottom: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+[data-theme="dark"] .auth-test-banner {
+  background-color: #78350f;
+  border-bottom-color: #f59e0b;
+  color: #fef3c7;
+}
+
+.auth-screen {
+  width: 100%;
+}
+
+.auth-card {
+  width: min(100%, 420px);
+  margin: 0 auto;
+}
+
+.auth-icon-box {
+  color: var(--primary);
+}
+
+.auth-user-label strong {
+  color: var(--text-main);
+}
+
+.auth-setup-copy {
+  max-width: 320px;
+  margin: -4px auto 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auth-checking-copy {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.auth-pin-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.auth-error-banner {
+  margin-bottom: 4px;
+  text-align: left;
+}
+
+.auth-pin-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.auth-pin-input {
+  width: 100%;
+  height: 54px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  outline: none;
+  background-color: var(--bg-input);
+  color: var(--text-main);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 14px;
+  text-align: center;
+  text-indent: 14px;
+}
+
+.auth-input-icon-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.auth-input-icon-wrap > svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  z-index: 1;
+  color: var(--text-subtle);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.auth-pin-input-with-icon {
+  padding-right: 42px;
+  padding-left: 42px;
+}
+
+.auth-pin-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.auth-pin-input:disabled {
+  opacity: 0.65;
+}
+
+.auth-pin-help {
+  min-height: 18px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  text-align: left;
+}
+
+.auth-submit-btn {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 2px;
+}
+
+.auth-change-user {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auth-change-user:hover {
+  color: var(--primary);
+}
+
+.auth-change-user:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.field-readonly-value {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 /* Skeleton Loading State */
 .skeleton-container {
   display: flex;

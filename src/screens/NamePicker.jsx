@@ -34,7 +34,7 @@ export default function NamePicker({ onPick, onReady }) {
     setLoading(true);
     setError('');
     api
-      .listUsersWithRoles()
+      .listUsers()
       .then(setUsers)
       .catch((err) => setError(err.message))
       .finally(() => {
