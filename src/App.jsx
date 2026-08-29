@@ -822,6 +822,7 @@ function PeriodScreens({
             month={month}
             client={selectedClient}
             onBack={onBackFromDetail}
+            canAssignClients={canAssignClients}
           />
         </motion.div>
       );

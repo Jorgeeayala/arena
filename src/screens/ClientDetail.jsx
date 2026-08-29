@@ -45,7 +45,14 @@ const cardVariants = {
   },
 };
 
-export default function ClientDetail({ user, year, month, client, onBack }) {
+export default function ClientDetail({
+  user,
+  year,
+  month,
+  client,
+  onBack,
+  canAssignClients,
+}) {
   // El detalle también escribe sobre el estado compartido del período: así
   // lo que se edita acá ya está actualizado en la lista y en "Asignar
   // clientes" cuando se vuelve, sin recargar nada.
