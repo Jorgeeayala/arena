@@ -296,6 +296,15 @@ export const api = {
     return storeSession(normalizeSession(data));
   },
 
+  changePin: async (currentPin, newPin) => {
+    const data = await request({
+      action: 'changePin',
+      currentPin,
+      newPin,
+    });
+    return storeSession(normalizeSession(data));
+  },
+
   validateSession: async ({ notifyOnFailure = true } = {}) => {
     if (!currentSession?.token) {
       throw new ApiError('Sesión requerida', { code: 'SESSION_REQUIRED' });

@@ -44,7 +44,10 @@ Estado de referencia: autenticación individual y configuración inicial de PIN 
 
 ## Recuperación y gestión de usuarios
 
-- [ ] Agregar una opción autenticada **Cambiar mi PIN**.
+- [x] Agregar una opción autenticada **Cambiar mi PIN**.
+  - Implementada en `AppsScript-Code-auth-PROPUESTA.gs` (acción `changePin`),
+    `src/api.js`, `src/components/PinChangeDialog.jsx` y `src/App.jsx`.
+  - Falta desplegar el backend actualizado y probar contra el Web App real.
 - [ ] Evaluar un panel exclusivo para `SUPERUSUARIO` que restablezca un PIN temporal y fuerce su cambio.
 - [ ] Implementar baja/reactivación de usuarios y revocación inmediata de todas sus sesiones.
 - [ ] Evaluar validación al recuperar el foco y bloqueo `fail closed` cuando no se pueda renovar autorización.

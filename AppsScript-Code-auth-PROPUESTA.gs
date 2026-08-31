@@ -853,6 +853,102 @@ function handleSessionCheck(body) {
   });
 }
 
+// Cambiar el PIN propio ya autenticado. Exige el PIN actual salvo que la
+// cuenta todavía no tenga PIN (pinless de prueba) y el autoalta siga
+// habilitado: en ese caso se comporta como el alta inicial, con la
+// diferencia de que ya hay una sesión válida.
+function handleChangePin(body, sessionUser) {
+  const currentPin = String(body.currentPin || '').trim();
+  const newPin = String(body.newPin || '').trim();
+
+  if (!/^\d{4}$/.test(currentPin) && !/^\d{4}$/.test(newPin)) {
+    return errorResponse(
+      'El PIN debe contener exactamente 4 dígitos',
+      'PIN_INVALID_FORMAT'
+    );
+  }
+  if (!/^\d{4}$/.test(newPin)) {
+    return errorResponse(
+      'El PIN nuevo debe contener exactamente 4 dígitos',
+      'PIN_INVALID_FORMAT'
+    );
+  }
+
+  const user = findAllowedUser(sessionUser);
+  if (!user) {
+    return errorResponse('Usuario no autorizado', 'USER_NOT_FOUND');
+  }
+
+  if (user.pinHash) {
+    if (!/^\d{4}$/.test(currentPin)) {
+      return errorResponse(
+        'Ingresá tu PIN actual de 4 dígitos',
+        'PIN_INVALID_FORMAT'
+      );
+    }
+
+    if (!constantTimeEquals(computePinHash(user.nombre, currentPin), user.pinHash)) {
+      const failed = registerFailedPin(user.nombre);
+      if (failed.locked) {
+        return errorResponse(
+          'Demasiados intentos. Cambio de PIN bloqueado temporalmente.',
+          'PIN_LOCKED',
+          { lockedUntil: failed.lockedUntil, attemptsRemaining: 0 }
+        );
+      }
+      return errorResponse(
+        'El PIN actual es incorrecto',
+        'PIN_INVALID',
+        { attemptsRemaining: failed.attemptsRemaining }
+      );
+    }
+  } else if (!isSelfPinSetupAllowed()) {
+    return errorResponse(
+      'Este usuario todavía no tiene un PIN configurado',
+      'PIN_NOT_CONFIGURED'
+    );
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return errorResponse(
+      'No se pudo reservar el cambio de PIN. Probá nuevamente.',
+      'PIN_CHANGE_LOCK_TIMEOUT'
+    );
+  }
+
+  try {
+    const freshUser = findAllowedUser(sessionUser);
+    if (!freshUser) {
+      return errorResponse('Usuario no autorizado', 'USER_NOT_FOUND');
+    }
+
+    // Evita que dos cambios paralelos sobre la misma cuenta se pisen.
+    if (
+      freshUser.pinHash &&
+      !constantTimeEquals(String(freshUser.pinHash || ''), String(user.pinHash || ''))
+    ) {
+      return errorResponse(
+        'El PIN cambió mientras tanto. Volvé a intentarlo.',
+        'PIN_CHANGE_RACE'
+      );
+    }
+
+    setUserPinHash(freshUser.nombre, newPin);
+    clearFailedPins(freshUser.nombre);
+
+    const configuredUser = findAllowedUser(freshUser.nombre);
+    if (!configuredUser || !configuredUser.pinHash) {
+      throw new Error('No se pudo confirmar el PIN recién configurado');
+    }
+
+    Logger.log('PIN actualizado por el usuario: ' + configuredUser.nombre);
+    return sessionResponse(issueSession(configuredUser, false));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // ── AUTORIZACIÓN DE COLUMNAS ────────────────────────────────────────────
 function isAssignmentColumn(column) {
   const key = normalizeKey(column);
@@ -1014,6 +1110,14 @@ function doPost(e) {
 
   const sessionUser = auth.session.user;
   const sessionRole = auth.session.role;
+
+  if (action === 'changePin') {
+    try {
+      return handleChangePin(body, sessionUser);
+    } catch (err) {
+      return errorResponse(err.message, 'PIN_CHANGE_ERROR');
+    }
+  }
 
   if (action === 'years') {
     try {
