@@ -13,11 +13,12 @@ import NewClient from './screens/NewClient';
 import AssignClients from './screens/AssignClients';
 import AppSplashLoader from './components/AppSplashLoader';
 import ScreenErrorBoundary from './components/ScreenErrorBoundary';
+import PinChangeDialog from './components/PinChangeDialog';
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
 import { formatPeriodLabel } from './utils';
 import { api } from './api';
-import { Calendar, User, Sun, Moon, Menu, X, UserCog, RefreshCw } from 'lucide-react';
+import { Calendar, User, Sun, Moon, Menu, X, UserCog, RefreshCw, KeyRound } from 'lucide-react';
 import './styles.css';
 
 const INITIAL_AUTH_STATE = {
@@ -86,6 +87,10 @@ export default function App({
   const [creatingWithHeaders, setCreatingWithHeaders] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignClientsOpen, setAssignClientsOpen] = useState(false);
+  const [pinChangeOpen, setPinChangeOpen] = useState(false);
+  const [pinChangeError, setPinChangeError] = useState('');
+  const [pinChangeSubmitting, setPinChangeSubmitting] = useState(false);
+  const [pinChangeNotice, setPinChangeNotice] = useState('');
   const [initialScreenReady, setInitialScreenReady] = useState(false);
   const markInitialScreenReady = useCallback(() => setInitialScreenReady(true), []);
 
@@ -367,6 +372,14 @@ export default function App({
     setMobileMenuOpen(false);
   }, [year, month, selectedClient, creatingWithHeaders, assignClientsOpen]);
 
+  // La confirmación de PIN actualizado desaparece sola para no acumular
+  // avisos en pantalla.
+  useEffect(() => {
+    if (!pinChangeNotice) return undefined;
+    const timer = setTimeout(() => setPinChangeNotice(''), 5000);
+    return () => clearTimeout(timer);
+  }, [pinChangeNotice]);
+
   function handlePickUser(chosenUser) {
     localStorage.setItem(STORAGE_KEY_USER, chosenUser);
     setUser(chosenUser);
@@ -428,6 +441,8 @@ export default function App({
 
   async function handleChangeUser() {
     authAttemptRef.current += 1;
+    setPinChangeOpen(false);
+    setPinChangeError('');
     try {
       await api.flushPendingSaves();
     } catch {
@@ -443,6 +458,36 @@ export default function App({
     localStorage.removeItem(STORAGE_KEY_USER);
     setAuthState({ ...INITIAL_AUTH_STATE });
     setUser(null);
+  }
+
+  function openPinChange() {
+    setPinChangeError('');
+    setPinChangeOpen(true);
+  }
+
+  async function handleChangePin(currentPin, newPin) {
+    if (pinChangeSubmitting) return;
+    setPinChangeSubmitting(true);
+    setPinChangeError('');
+
+    try {
+      const session = await api.changePin(currentPin, newPin);
+      setAuthState((previous) => ({
+        ...previous,
+        status: 'authenticated',
+        session,
+        error: '',
+        errorCode: '',
+        attemptsRemaining: undefined,
+        lockedUntil: 0,
+      }));
+      setPinChangeOpen(false);
+      setPinChangeNotice('PIN actualizado correctamente. Las sesiones anteriores de tu cuenta se cerraron.');
+    } catch (error) {
+      setPinChangeError(error?.message || 'No se pudo cambiar el PIN. Probá nuevamente.');
+    } finally {
+      setPinChangeSubmitting(false);
+    }
   }
 
   // Navbar for authenticated screens
@@ -481,6 +526,15 @@ export default function App({
                 <span>{formatPeriodLabel(month, year)}</span>
               </button>
             )}
+            <button
+              type="button"
+              className="real-exec-theme-button real-exec-change-pin-button"
+              onClick={openPinChange}
+              title="Cambiar mi PIN"
+              aria-label="Cambiar mi PIN"
+            >
+              <KeyRound size={16} />
+            </button>
             <button
               type="button"
               className="real-exec-theme-button"
@@ -554,6 +608,21 @@ export default function App({
               >
                 <Calendar size={14} />
                 <span>{formatPeriodLabel(month, year)}</span>
+              </motion.button>
+            )}
+
+            {/* Cambiar mi PIN: acceso directo en desktop; en mobile vive
+                dentro del drawer para no saturar la barra. */}
+            {user && (
+              <motion.button
+                className="pill-btn change-pin-btn hide-mobile"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={openPinChange}
+                title="Cambiar mi PIN"
+                aria-label="Cambiar mi PIN"
+              >
+                <KeyRound size={14} />
               </motion.button>
             )}
 
@@ -678,6 +747,18 @@ export default function App({
                 <span>{theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}</span>
               </button>
 
+              <button
+                type="button"
+                className="mobile-menu-item"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  openPinChange();
+                }}
+              >
+                <KeyRound size={17} />
+                <span>Cambiar mi PIN</span>
+              </button>
+
               {canAssignClients && year && month && (
                 <button
                   type="button"
@@ -716,6 +797,11 @@ export default function App({
         maxDurationMs={3000}
       />
       {authenticated && renderNavbar()}
+      {pinChangeNotice && (
+        <div className="pin-change-notice" role="status">
+          {pinChangeNotice}
+        </div>
+      )}
       {authenticated && authState.session?.pinless && (
         <div className="auth-test-banner" role="status">
           Modo de prueba: este usuario ingresó sin PIN
@@ -755,6 +841,18 @@ export default function App({
           onBackFromAssign={() => setAssignClientsOpen(false)}
         />
       </ClientsProvider>
+
+      <PinChangeDialog
+        key={pinChangeOpen ? 'pin-change-open' : 'pin-change-closed'}
+        open={pinChangeOpen}
+        user={user}
+        error={pinChangeError}
+        submitting={pinChangeSubmitting}
+        onClose={() => {
+          if (!pinChangeSubmitting) setPinChangeOpen(false);
+        }}
+        onSubmit={handleChangePin}
+      />
     </div>
   );
 }
