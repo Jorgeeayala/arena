@@ -29,6 +29,7 @@ import {
   Filter,
   ArrowUpDown,
   UserCheck,
+  UserRound,
   UserCog,
   BarChart3,
   Archive,
@@ -341,21 +342,14 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
           cursor: isTouchDevice ? (isSwiping ? 'grabbing' : 'grab') : 'pointer',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+        <div className="client-card-main">
           <div className="client-info" style={{ flex: 1, minWidth: 0 }}>
             <div className="client-avatar-default">
               <Building2 size={20} />
             </div>
-            <div>
+            <div className="client-card-identity">
               <div className="client-name">{clientName}</div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                {vtoValue && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                    <Calendar size={12} />
-                    Vencimiento: <strong>{vtoValue}</strong>
-                  </span>
-                )}
-
+              <div className="client-card-assignee">
                 {/* El encargado es SIEMPRE el valor real de la columna
                     "Encargado" de la hoja, y ahora se puede cambiar acá
                     mismo. La asignación manual acepta a CUALQUIERA del
@@ -370,7 +364,7 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
                       onClick={(e) => e.stopPropagation()}
                       onPointerDown={(e) => e.stopPropagation()}
                     >
-                      <UserCheck size={11} />
+                      <UserRound size={11} />
                       <select
                         className={`card-encargado-select ${assignedUser ? '' : 'is-empty'}`}
                         value={assignedUser || ''}
@@ -411,10 +405,10 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
                   ) : (
                     <span
                       className={`assigned-user-badge ${assignedUser ? '' : 'assigned-user-badge-empty'}`}
-                      title={assignedUser ? `Encargado: ${assignedUser}` : 'Sin encargado'}
+                      title={assignedUser ? `Encargado: ${assignedUser}` : 'Sin asignar'}
                     >
-                      <UserCheck size={11} />
-                      {assignedUser || 'Sin encargado'}
+                      <UserRound size={11} />
+                      {assignedUser || 'Sin asignar'}
                     </span>
                   )
                 ) : null}
@@ -422,32 +416,37 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
             </div>
           </div>
 
-          {/* Indicador visual persistente de Presentado/Archivado -- se
-              actualiza al instante (misma actualización optimista que
-              usan los toggles) tanto por swipe como por click, y queda
-              visible SIEMPRE (no solo durante el gesto de swipe), en
-              mobile y en PC. Sin mostrar el nombre de quién lo hizo, solo
-              el estado -- eso se mantiene chico a propósito. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+          <ChevronRight size={20} className="client-card-chevron" />
+        </div>
+
+        <div className="client-card-footer">
+          {vtoValue && (
+            <span className="client-card-due-date">
+              <Calendar size={12} />
+              Vencimiento: <strong>{vtoValue}</strong>
+            </span>
+          )}
+
+          <div className="client-card-statuses">
             {presColName && (
               <span
-                className={`status-dot ${isPresSi ? 'status-dot-presentado' : ''}`}
+                className={`status-badge ${isPresSi ? 'status-badge-presentado' : 'status-badge-pendiente'}`}
                 title={`Presentado: ${isPresSi ? 'Sí' : 'No'}`}
               >
-                <CheckCircle2 size={13} />
+                <CheckCircle2 size={12} />
+                <span>{isPresSi ? 'Presentado' : 'Pendiente'}</span>
               </span>
             )}
             {archColName && (
               <span
-                className={`status-dot ${isArchSi ? 'status-dot-archivado' : ''}`}
+                className={`status-badge ${isArchSi ? 'status-badge-archivado' : 'status-badge-pendiente'}`}
                 title={`Archivado: ${isArchSi ? 'Sí' : 'No'}`}
               >
-                <Archive size={13} />
+                <Archive size={12} />
+                <span>{isArchSi ? 'Archivado' : 'Pendiente'}</span>
               </span>
             )}
           </div>
-
-          <ChevronRight size={20} className="client-card-chevron" />
         </div>
 
         {/* En el preview de sólo lectura se conservan únicamente los indicadores. */}
