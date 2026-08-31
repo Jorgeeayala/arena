@@ -17,7 +17,7 @@ import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
 import { formatPeriodLabel } from './utils';
 import { api } from './api';
-import { Calendar, User, Sun, Moon, Menu, X, UserCog } from 'lucide-react';
+import { Calendar, User, Sun, Moon, Menu, X, UserCog, RefreshCw } from 'lucide-react';
 import './styles.css';
 
 const INITIAL_AUTH_STATE = {
@@ -99,6 +99,7 @@ export default function App({
   }));
   const [authGeneration, setAuthGeneration] = useState(0);
   const authAttemptRef = useRef(0);
+  const periodOverviewRef = useRef(null);
   const authenticated = authState.status === 'authenticated';
   const userRole = authenticated ? authState.session?.user?.role : null;
   const activeSessionToken = authState.session?.token || '';
@@ -454,13 +455,18 @@ export default function App({
             <div><strong>MJ Control</strong><span>Inteligencia operativa</span></div>
           </div>
 
-          <nav className="real-exec-navbar-links" aria-label="Navegación ejecutiva">
-            <span className="is-active">Resumen</span>
-            <span>Clientes</span>
-            <span>Equipo</span>
-          </nav>
-
           <div className="real-exec-navbar-actions">
+            {year && month && !selectedClient && (
+              <button
+                type="button"
+                className="real-exec-refresh-button"
+                onClick={() => periodOverviewRef.current?.refresh()}
+                title="Actualizar clientes y equipo"
+              >
+                <RefreshCw size={14} />
+                <span>Actualizar</span>
+              </button>
+            )}
             {year && month && (
               <button
                 type="button"
@@ -726,6 +732,7 @@ export default function App({
           authState={authState}
           readOnlyPreview={readOnlyPreview}
           PeriodOverviewComponent={PeriodOverviewComponent}
+          periodOverviewRef={periodOverviewRef}
           canAssignClients={canAssignClients}
           onInitialContentReady={markInitialScreenReady}
           year={year}
@@ -760,6 +767,7 @@ function PeriodScreens({
   authState,
   readOnlyPreview,
   PeriodOverviewComponent,
+  periodOverviewRef,
   canAssignClients,
   onInitialContentReady,
   year,
@@ -895,7 +903,7 @@ function PeriodScreens({
     return (
       <motion.div key={`client-list-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
         {PeriodOverviewComponent ? (
-          <PeriodOverviewComponent onSelect={onSelectClient} />
+          <PeriodOverviewComponent ref={periodOverviewRef} onSelect={onSelectClient} />
         ) : (
           <ClientList
             onSelect={onSelectClient}

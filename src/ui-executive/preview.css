@@ -62,7 +62,7 @@
   z-index: 100;
   min-height: 70px;
   display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) auto minmax(280px, 1fr);
+  grid-template-columns: minmax(180px, 1fr) auto;
   align-items: center;
   gap: 24px;
   padding: 10px clamp(18px, 4vw, 48px);
@@ -80,6 +80,7 @@
 .real-exec-navbar-brand,
 .real-exec-navbar-actions,
 .real-exec-user-button,
+.real-exec-refresh-button,
 .real-exec-period-button,
 .real-exec-theme-button {
   display: flex;
@@ -117,40 +118,12 @@
   font-size: 8px;
 }
 
-.real-exec-navbar-links {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  gap: 23px;
-}
-
-.real-exec-navbar-links span {
-  position: relative;
-  color: #78939a;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.real-exec-navbar-links span.is-active {
-  color: #ffffff;
-}
-
-.real-exec-navbar-links span.is-active::after {
-  position: absolute;
-  right: 0;
-  bottom: -25px;
-  left: 0;
-  height: 2px;
-  border-radius: 3px;
-  background: #48c6d0;
-  content: "";
-}
-
 .real-exec-navbar-actions {
   justify-content: flex-end;
   gap: 7px;
 }
 
+.real-exec-refresh-button,
 .real-exec-period-button,
 .real-exec-theme-button,
 .real-exec-user-button {
@@ -161,12 +134,18 @@
   cursor: pointer;
 }
 
+.real-exec-refresh-button,
 .real-exec-period-button {
   gap: 6px;
   padding: 0 10px;
   border-radius: 10px;
   font-size: 9px;
   font-weight: 700;
+}
+
+.real-exec-refresh-button {
+  border-color: rgba(72, 198, 208, 0.24);
+  color: #75d8df;
 }
 
 .real-exec-theme-button {
@@ -988,10 +967,6 @@
     grid-template-columns: 1fr auto;
   }
 
-  .real-exec-navbar-links {
-    display: none;
-  }
-
   .real-exec-insights {
     grid-template-columns: 1fr;
   }
@@ -1022,6 +997,7 @@
   }
 
   .real-exec-navbar-brand span,
+  .real-exec-refresh-button span,
   .real-exec-period-button span,
   .real-exec-user-button > span:last-child {
     display: none;
@@ -1031,6 +1007,7 @@
     gap: 4px;
   }
 
+  .real-exec-refresh-button,
   .real-exec-period-button,
   .real-exec-theme-button {
     width: 34px;

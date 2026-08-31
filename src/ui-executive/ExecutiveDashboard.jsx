@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Archive,
@@ -67,7 +67,7 @@ function Metric({ icon: Icon, value, label, tone }) {
   );
 }
 
-export default function ExecutiveDashboard({ onSelect }) {
+const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect }, ref) {
   const {
     user,
     year,
@@ -76,6 +76,7 @@ export default function ExecutiveDashboard({ onSelect }) {
     loading,
     error,
     reload,
+    syncTeamUsers,
     nameKey,
     rucKey,
     vencimientoKey,
@@ -90,6 +91,13 @@ export default function ExecutiveDashboard({ onSelect }) {
 
   const [quickFilter, setQuickFilter] = useState('all');
   const clientSectionRef = useRef(null);
+
+  const refresh = useCallback(
+    () => Promise.allSettled([reload(true), syncTeamUsers(true)]),
+    [reload, syncTeamUsers]
+  );
+
+  useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
   const metrics = useMemo(() => {
     let presented = 0;
@@ -328,4 +336,6 @@ export default function ExecutiveDashboard({ onSelect }) {
       </section>
     </main>
   );
-}
+});
+
+export default ExecutiveDashboard;
