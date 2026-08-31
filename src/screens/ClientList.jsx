@@ -99,6 +99,7 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
   repartoUsers,
   onSetEncargado,
   savingEncargado,
+  readOnlyPreview,
 }, ref) {
   const [localOverrides, setLocalOverrides] = useState({});
   // dragX era useState antes: eso disparaba un re-render de React en
@@ -196,6 +197,7 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
 
   const onToggleClick = (e, colName, targetVal) => {
     if (e && e.stopPropagation) e.stopPropagation();
+    if (readOnlyPreview) return;
     // 0ms instant visual toggle locally
     setLocalOverrides((prev) => ({ ...prev, [colName]: targetVal }));
     // Asynchronous backend update
@@ -265,7 +267,7 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
       }}
     >
       {/* Background action indicators (ONLY on touch devices when dragging) */}
-      {isTouchDevice && (
+      {isTouchDevice && !readOnlyPreview && (
         <motion.div
           className="swipe-action-bg"
           style={{
@@ -319,12 +321,12 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
       {/* Main Card (Draggable on mobile touch, static click target on PC) */}
       <motion.div
         className="client-card"
-        drag={isTouchDevice ? 'x' : false}
-        dragConstraints={isTouchDevice ? { left: 0, right: 0 } : undefined}
-        dragElastic={isTouchDevice ? 0.6 : undefined}
-        onDragStart={isTouchDevice ? handleDragStart : undefined}
-        onDrag={isTouchDevice ? handleDrag : undefined}
-        onDragEnd={isTouchDevice ? handleDragEnd : undefined}
+        drag={isTouchDevice && !readOnlyPreview ? 'x' : false}
+        dragConstraints={isTouchDevice && !readOnlyPreview ? { left: 0, right: 0 } : undefined}
+        dragElastic={isTouchDevice && !readOnlyPreview ? 0.6 : undefined}
+        onDragStart={isTouchDevice && !readOnlyPreview ? handleDragStart : undefined}
+        onDrag={isTouchDevice && !readOnlyPreview ? handleDrag : undefined}
+        onDragEnd={isTouchDevice && !readOnlyPreview ? handleDragEnd : undefined}
         onClick={handleCardClick}
         whileHover={{ y: -1, transition: { duration: 0.15 } }}
         style={{
@@ -448,8 +450,9 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
           <ChevronRight size={20} className="client-card-chevron" />
         </div>
 
-        {/* Interactive Quick Action Toggles right on card */}
-        <div className="card-quick-actions" onClick={(e) => e.stopPropagation()}>
+        {/* En el preview de sólo lectura se conservan únicamente los indicadores. */}
+        {!readOnlyPreview && (
+          <div className="card-quick-actions" onClick={(e) => e.stopPropagation()}>
           {/* Botón Marangatu (solo PC): abre el login de la SET con las
               credenciales de este cliente. Con la extensión instalada y
               configurada, autocompleta; si no, abre la página igual. */}
@@ -533,14 +536,15 @@ const SwipeableClientCard = memo(forwardRef(function SwipeableClientCard({
               </button>
             );
           })}
-        </div>
+          </div>
+        )}
       </motion.div>
     </motion.li>
   );
 }));
 SwipeableClientCard.displayName = 'SwipeableClientCard';
 
-export default function ClientList({ onSelect, onNewClient }) {
+export default function ClientList({ onSelect, onNewClient, readOnlyPreview = false }) {
   const isTouchDevice = useIsTouchDevice();
 
   // Datos, equipo, filtros y escritura vienen del CONTEXTO COMPARTIDO con
@@ -1018,15 +1022,17 @@ export default function ClientList({ onSelect, onNewClient }) {
           )}
         </div>
 
-        <motion.button
-          className="btn-primary"
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.96 }}
-          onClick={() => onNewClient(headers)}
-        >
-          <Plus size={18} />
-          <span>Nuevo Cliente</span>
-        </motion.button>
+        {!readOnlyPreview && (
+          <motion.button
+            className="btn-primary"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => onNewClient(headers)}
+          >
+            <Plus size={18} />
+            <span>Nuevo Cliente</span>
+          </motion.button>
+        )}
 
         {/* Disparador del panel de filtros: solo visible en mobile (CSS).
             En desktop los filtros ya están siempre a la vista debajo. */}
@@ -1313,7 +1319,7 @@ export default function ClientList({ onSelect, onNewClient }) {
 
       {!loading && !error && (
         <>
-          {isTouchDevice && filteredAndSorted.length > 0 && (
+          {isTouchDevice && !readOnlyPreview && filteredAndSorted.length > 0 && (
             <div className="swipe-hint-bar">
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                 👉 Desliza a la derecha: <strong style={{ color: '#15803d' }}>Presentado</strong>
@@ -1393,6 +1399,7 @@ export default function ClientList({ onSelect, onNewClient }) {
                     repartoUsers={repartoUsers}
                     onSetEncargado={setEncargado}
                     savingEncargado={savingRows.includes(row._row)}
+                    readOnlyPreview={readOnlyPreview}
                   />
                 );
               })}
@@ -1421,7 +1428,7 @@ export default function ClientList({ onSelect, onNewClient }) {
                   >
                     Limpiar todos los filtros
                   </motion.button>
-                ) : (
+                ) : !readOnlyPreview ? (
                   <motion.button
                     className="btn-primary"
                     whileHover={{ scale: 1.04 }}
@@ -1430,7 +1437,7 @@ export default function ClientList({ onSelect, onNewClient }) {
                   >
                     <Plus size={16} /> Crear primer cliente
                   </motion.button>
-                )}
+                ) : null}
               </motion.div>
             )}
             </motion.ul>

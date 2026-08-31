@@ -74,7 +74,11 @@ function pinSetupStateFromError(error) {
   };
 }
 
-export default function App() {
+export default function App({
+  readOnlyPreview = false,
+  uiMode = 'classic',
+  periodOverviewComponent: PeriodOverviewComponent = null,
+}) {
   const [user, setUser] = useState(() => localStorage.getItem(STORAGE_KEY_USER));
   const [year, setYear] = useState(null);
   const [month, setMonth] = useState(null);
@@ -100,7 +104,8 @@ export default function App() {
   const activeSessionToken = authState.session?.token || '';
   const activeSessionExpiresAt = Number(authState.session?.expiresAt || 0);
   const activeSessionIdleMs = Number(authState.session?.idleTimeoutMs || 0);
-  const canAssignClients = userRole === 'SUPERUSUARIO' || userRole === 'ADMINISTRADOR';
+  const canAssignClients =
+    !readOnlyPreview && (userRole === 'SUPERUSUARIO' || userRole === 'ADMINISTRADOR');
   const authReady = !user || authState.status !== 'checking';
   const initialContentReady = initialScreenReady && authReady;
 
@@ -441,6 +446,57 @@ export default function App() {
 
   // Navbar for authenticated screens
   const renderNavbar = () => {
+    if (uiMode === 'executive') {
+      return (
+        <header className="real-exec-navbar">
+          <div className="real-exec-navbar-brand">
+            <img src="/logo-mj.png" alt="MJ Estudio Contable" />
+            <div><strong>MJ Control</strong><span>Inteligencia operativa</span></div>
+          </div>
+
+          <nav className="real-exec-navbar-links" aria-label="Navegación ejecutiva">
+            <span className="is-active">Resumen</span>
+            <span>Clientes</span>
+            <span>Equipo</span>
+          </nav>
+
+          <div className="real-exec-navbar-actions">
+            {year && month && (
+              <button
+                type="button"
+                className="real-exec-period-button"
+                onClick={() => {
+                  setSelectedClient(null);
+                  setMonth(null);
+                }}
+                title="Cambiar período"
+              >
+                <Calendar size={14} />
+                <span>{formatPeriodLabel(month, year)}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="real-exec-theme-button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+            >
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <button
+              type="button"
+              className="real-exec-user-button"
+              onClick={handleChangeUser}
+              title="Cambiar de usuario"
+            >
+              <span>{String(user || '?').charAt(0).toUpperCase()}</span>
+              <span><strong>{user}</strong><small>{userRole || 'Usuario'}</small></span>
+            </button>
+          </div>
+        </header>
+      );
+    }
+
     return (
       <>
       <header className="app-navbar">
@@ -646,7 +702,7 @@ export default function App() {
   // recargar. Ese estado se lee con un hook, por eso el render se delega
   // al componente <PeriodScreens> de más abajo.
   return (
-    <div className="app-container">
+    <div className={`app-container ${uiMode === 'executive' ? 'real-exec-app' : ''}`}>
       <AppSplashLoader
         logoSrc="/logo-mj.png"
         ready={initialContentReady}
@@ -668,6 +724,8 @@ export default function App() {
         <PeriodScreens
           user={user}
           authState={authState}
+          readOnlyPreview={readOnlyPreview}
+          PeriodOverviewComponent={PeriodOverviewComponent}
           canAssignClients={canAssignClients}
           onInitialContentReady={markInitialScreenReady}
           year={year}
@@ -700,6 +758,8 @@ export default function App() {
 function PeriodScreens({
   user,
   authState,
+  readOnlyPreview,
+  PeriodOverviewComponent,
   canAssignClients,
   onInitialContentReady,
   year,
@@ -826,6 +886,7 @@ function PeriodScreens({
             client={selectedClient}
             onBack={onBackFromDetail}
             canAssignClients={canAssignClients}
+            readOnlyPreview={readOnlyPreview}
           />
         </motion.div>
       );
@@ -833,7 +894,15 @@ function PeriodScreens({
 
     return (
       <motion.div key={`client-list-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
-        <ClientList onSelect={onSelectClient} onNewClient={onNewClient} />
+        {PeriodOverviewComponent ? (
+          <PeriodOverviewComponent onSelect={onSelectClient} />
+        ) : (
+          <ClientList
+            onSelect={onSelectClient}
+            onNewClient={onNewClient}
+            readOnlyPreview={readOnlyPreview}
+          />
+        )}
       </motion.div>
     );
   };

@@ -52,6 +52,7 @@ export default function ClientDetail({
   client,
   onBack,
   canAssignClients,
+  readOnlyPreview = false,
 }) {
   // El detalle también escribe sobre el estado compartido del período: así
   // lo que se edita acá ya está actualizado en la lista y en "Asignar
@@ -93,6 +94,8 @@ export default function ClientDetail({
   const archUser = archivadoPorCol && values[archivadoPorCol] ? String(values[archivadoPorCol]) : null;
 
   async function saveField(column, newValue) {
+    if (readOnlyPreview) return;
+
     const valToSave = newValue !== undefined ? newValue : values[column];
     
     let updates = { [column]: valToSave };
@@ -172,7 +175,7 @@ export default function ClientDetail({
 
         <div className="save-all-notice">
           <FileText size={14} />
-          <span>Cambios sincronizados en vivo</span>
+          <span>{readOnlyPreview ? 'Vista de sólo lectura' : 'Cambios sincronizados en vivo'}</span>
         </div>
       </div>
 
@@ -279,7 +282,11 @@ export default function ClientDetail({
                 </AnimatePresence>
               </div>
 
-              {fieldType === 'pure_yesno' ? (
+              {readOnlyPreview ? (
+                <div className="field-readonly-value" title="Preview ejecutivo de sólo lectura">
+                  {String(values[field] ?? '').trim() || '—'}
+                </div>
+              ) : fieldType === 'pure_yesno' ? (
                 <div className="yesno-toggle-group">
                   <motion.button
                     type="button"
