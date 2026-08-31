@@ -3,18 +3,18 @@
  * La entrada normal no importa este archivo y conserva su diseño original.
  */
 .executive-preview-root {
-  --rx-app: #edf4f5;
+  --rx-app: #edf1f3;
   --rx-surface: #ffffff;
-  --rx-soft: #f4f8f8;
-  --rx-hover: #eaf3f4;
-  --rx-ink: #142830;
-  --rx-muted: #667d83;
-  --rx-subtle: #95a7ab;
-  --rx-line: #dce8ea;
-  --rx-line-strong: #c8dade;
-  --rx-brand: #07899a;
-  --rx-brand-dark: #066b79;
-  --rx-brand-soft: #e2f5f7;
+  --rx-soft: #f4f5f6;
+  --rx-hover: #e7ecef;
+  --rx-ink: #303031;
+  --rx-muted: #5a5e62;
+  --rx-subtle: #737c85;
+  --rx-line: #d2d3d6;
+  --rx-line-strong: #bcbec3;
+  --rx-brand: #27658d;
+  --rx-brand-dark: #19506f;
+  --rx-brand-soft: #e7f0f5;
   --rx-green: #15906f;
   --rx-green-soft: #e6f6f0;
   --rx-amber: #bf7416;
@@ -28,18 +28,18 @@
 }
 
 [data-theme="dark"] .executive-preview-root {
-  --rx-app: #0b171c;
-  --rx-surface: #13262d;
-  --rx-soft: #192e36;
-  --rx-hover: #213940;
-  --rx-ink: #f0fafb;
-  --rx-muted: #a7bec2;
-  --rx-subtle: #78959b;
-  --rx-line: #274149;
-  --rx-line-strong: #385760;
-  --rx-brand: #62d4df;
-  --rx-brand-dark: #93e5ec;
-  --rx-brand-soft: rgba(65, 194, 207, 0.14);
+  --rx-app: #1c1f23;
+  --rx-surface: #23313b;
+  --rx-soft: #293b47;
+  --rx-hover: #314956;
+  --rx-ink: #e7e9ea;
+  --rx-muted: #bcbec3;
+  --rx-subtle: #a0a3a7;
+  --rx-line: #3d515d;
+  --rx-line-strong: #526b79;
+  --rx-brand: #6fa5c3;
+  --rx-brand-dark: #9fc4d8;
+  --rx-brand-soft: rgba(39, 101, 141, 0.24);
   --rx-green: #54d5aa;
   --rx-green-soft: rgba(44, 184, 139, 0.14);
   --rx-amber: #f1b65c;
@@ -51,7 +51,7 @@
 .executive-preview-root .real-exec-app {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 88% 7%, rgba(18, 155, 169, 0.12), transparent 27%),
+    radial-gradient(circle at 88% 7%, rgba(39, 101, 141, 0.14), transparent 27%),
     var(--rx-app);
 }
 
@@ -67,9 +67,9 @@
   gap: 24px;
   padding: 10px clamp(18px, 4vw, 48px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(9, 30, 39, 0.97);
+  background: rgba(28, 31, 35, 0.97);
   color: #ffffff;
-  box-shadow: 0 8px 26px rgba(4, 25, 33, 0.17);
+  box-shadow: 0 8px 26px rgba(28, 31, 35, 0.24);
   backdrop-filter: blur(16px);
 }
 
@@ -114,7 +114,7 @@
 
 .real-exec-navbar-brand span,
 .real-exec-user-button small {
-  color: #79969d;
+  color: #a0a3a7;
   font-size: 8px;
 }
 
@@ -130,7 +130,7 @@
   min-height: 36px;
   border: 1px solid rgba(255, 255, 255, 0.11);
   background: rgba(255, 255, 255, 0.045);
-  color: #bfd0d3;
+  color: #d2d3d6;
   cursor: pointer;
 }
 
@@ -144,8 +144,8 @@
 }
 
 .real-exec-refresh-button {
-  border-color: rgba(72, 198, 208, 0.24);
-  color: #75d8df;
+  border-color: rgba(111, 165, 195, 0.35);
+  color: #9fc4d8;
 }
 
 .real-exec-theme-button {
@@ -168,7 +168,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(145deg, #1aa6b3, #076e7b);
+  background: linear-gradient(145deg, #27658d, #19506f);
   color: #ffffff;
   font-size: 9px;
   font-weight: 800;
@@ -213,10 +213,10 @@
   padding: 31px 35px;
   border-radius: 26px;
   background:
-    radial-gradient(circle at 80% 30%, rgba(28, 182, 192, 0.5), transparent 26%),
-    linear-gradient(125deg, #0b202a 0%, #103a47 55%, #07525b 100%);
+    radial-gradient(circle at 80% 30%, rgba(70, 131, 164, 0.48), transparent 26%),
+    linear-gradient(125deg, #1c1f23 0%, #233850 55%, #19506f 100%);
   color: #ffffff;
-  box-shadow: 0 24px 55px rgba(7, 44, 53, 0.25);
+  box-shadow: 0 24px 55px rgba(25, 80, 111, 0.28);
 }
 
 .real-exec-hero::before {
@@ -247,7 +247,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #65d5dd;
+  color: #8fb8cf;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -266,7 +266,7 @@
 .real-exec-hero-copy p {
   max-width: 430px;
   margin-top: 13px;
-  color: #a9c6cb;
+  color: #d2d3d6;
   font-size: 11px;
   line-height: 1.55;
 }
@@ -280,8 +280,8 @@
   padding: 0 15px;
   border: 0;
   border-radius: 999px;
-  background: #effcfc;
-  color: #0a4650;
+  background: #e7e9ea;
+  color: #233850;
   cursor: pointer;
   font-size: 10px;
   font-weight: 750;
@@ -298,7 +298,7 @@
 }
 
 .real-exec-progress-card > span {
-  color: #8fb2b8;
+  color: #a9c2cf;
   font-size: 7px;
   font-weight: 800;
   letter-spacing: 0.13em;
@@ -307,7 +307,7 @@
 .real-exec-progress-card > small {
   display: block;
   margin-top: 9px;
-  color: #9bb8bd;
+  color: #bcbec3;
   font-size: 8px;
   text-align: center;
 }
@@ -319,7 +319,7 @@
   margin: 10px auto 7px;
   place-items: center;
   border-radius: 50%;
-  background: conic-gradient(#6fe0e6 var(--real-progress), rgba(255, 255, 255, 0.12) 0);
+  background: conic-gradient(#8fb8cf var(--real-progress), rgba(255, 255, 255, 0.12) 0);
 }
 
 .real-exec-progress-ring::before {
@@ -327,7 +327,7 @@
   height: 73px;
   grid-area: 1 / 1;
   border-radius: 50%;
-  background: #16414b;
+  background: #233850;
   content: "";
 }
 
@@ -919,7 +919,7 @@
 
 .executive-preview-root .real-exec-app .client-detail-header {
   border-radius: 20px;
-  background: linear-gradient(125deg, #0b202a, #08606a);
+  background: linear-gradient(125deg, #1c1f23, #19506f);
   color: #ffffff;
 }
 
@@ -944,18 +944,18 @@
   align-items: center;
   gap: 8px;
   padding: 9px 12px;
-  border: 1px solid rgba(84, 211, 221, 0.28);
+  border: 1px solid rgba(111, 165, 195, 0.38);
   border-radius: 999px;
-  background: rgba(10, 35, 44, 0.94);
-  color: #c5dadd;
-  box-shadow: 0 12px 30px rgba(4, 22, 29, 0.28);
+  background: rgba(28, 31, 35, 0.95);
+  color: #d2d3d6;
+  box-shadow: 0 12px 30px rgba(28, 31, 35, 0.34);
   backdrop-filter: blur(12px);
   font-size: 11px;
   pointer-events: none;
 }
 
 .executive-preview-badge svg {
-  color: #54d3dd;
+  color: #8fb8cf;
 }
 
 .executive-preview-badge strong {
