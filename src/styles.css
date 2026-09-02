@@ -2515,10 +2515,6 @@ body {
   color: var(--text-main);
 }
 
-.pin-change-modal .auth-pin-form {
-  max-width: none;
-}
-
 .pin-change-intro {
   color: var(--text-muted);
   font-size: 13px;
@@ -2526,7 +2522,6 @@ body {
   margin: -4px 0 14px;
 }
 
-.pin-change-modal .auth-pin-input,
 .settings-modal .auth-pin-input {
   height: 48px;
   font-size: 22px;

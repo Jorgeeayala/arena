@@ -82,7 +82,8 @@
 .real-exec-user-button,
 .real-exec-refresh-button,
 .real-exec-period-button,
-.real-exec-theme-button {
+.real-exec-theme-button,
+.real-exec-settings-button {
   display: flex;
   align-items: center;
 }
@@ -126,6 +127,7 @@
 .real-exec-refresh-button,
 .real-exec-period-button,
 .real-exec-theme-button,
+.real-exec-settings-button,
 .real-exec-user-button {
   min-height: 36px;
   border: 1px solid rgba(255, 255, 255, 0.11);
@@ -148,10 +150,16 @@
   color: #9fc4d8;
 }
 
-.real-exec-theme-button {
+.real-exec-theme-button,
+.real-exec-settings-button {
   width: 36px;
   justify-content: center;
   border-radius: 10px;
+}
+
+.real-exec-settings-button:hover {
+  border-color: rgba(111, 165, 195, 0.35);
+  color: #9fc4d8;
 }
 
 .real-exec-user-button {
@@ -1025,7 +1033,8 @@
 
   .real-exec-refresh-button,
   .real-exec-period-button,
-  .real-exec-theme-button {
+  .real-exec-theme-button,
+  .real-exec-settings-button {
     width: 34px;
     justify-content: center;
     padding: 0;
