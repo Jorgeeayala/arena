@@ -128,7 +128,7 @@ export function normalizeUserRole(value) {
 
 export function getDisplayHeader(header) {
   if (!header) return 'Vencimiento';
-  const clean = String(header).trim().replace(/[:._\-]+$/, '').trim();
+  const clean = String(header).trim().replace(/[:._-]+$/, '').trim();
   if (!clean || /^(_col_|columna\s*\d+|unnamed)/i.test(clean)) {
     return 'Vencimiento';
   }

@@ -46,7 +46,10 @@ Estado de referencia: autenticación individual y configuración inicial de PIN 
 
 - [x] Agregar una opción autenticada **Cambiar mi PIN**.
   - Implementada en `AppsScript-Code-auth-PROPUESTA.gs` (acción `changePin`),
-    `src/api.js`, `src/components/PinChangeDialog.jsx` y `src/App.jsx`.
+    `src/api.js`, `src/components/SettingsDialog.jsx` y `src/App.jsx`.
+  - Vive dentro del modal **Configuración**, junto con el tema claro/oscuro.
+  - El cambio de usuario queda donde estaba (píldora de usuario en la barra),
+    sin exponerlo para usuarios normales en el panel de Configuración.
   - Falta desplegar el backend actualizado y probar contra el Web App real.
 - [ ] Evaluar un panel exclusivo para `SUPERUSUARIO` que restablezca un PIN temporal y fuerce su cambio.
 - [ ] Implementar baja/reactivación de usuarios y revocación inmediata de todas sus sesiones.
@@ -65,7 +68,9 @@ Estado de referencia: autenticación individual y configuración inicial de PIN 
 - [ ] Configurar el ID definitivo de la extensión donde corresponda.
 - [ ] Definir, si se necesita una aplicación de PC, el puerto/origen y protocolo del puente local.
 - [ ] Revisar los warnings heredados del lint y el estado de dependencias con `npm audit` en una tarea separada.
-- [ ] Actualizar la documentación general del `README.md`, que todavía describe el flujo inicial del proyecto.
+- [x] Actualizar la documentación general del `README.md`, que todavía describe el flujo inicial del proyecto.
+  - Describe autenticación por PIN, sesión, roles, lista, detalle,
+    asignación, panel ejecutivo, Configuración y notas de seguridad.
 
 ## Operación y respaldo
 
