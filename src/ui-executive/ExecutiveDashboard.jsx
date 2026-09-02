@@ -44,16 +44,17 @@ function StatusIcon({ type, active }) {
   const archived = type === 'archived';
   const label = archived
     ? (active ? 'Archivado' : 'Sin archivar')
-    : (active ? 'Presentado' : 'Presentación pendiente');
+    : (active ? 'Presentado' : 'Pendiente');
 
   return (
     <span
-      className={`real-exec-status-icon ${active ? 'is-active' : 'is-inactive'}`}
+      className={`real-exec-status-chip ${active ? 'is-active' : 'is-inactive'} ${archived ? 'is-archived' : 'is-presented'}`}
       role="img"
       aria-label={label}
       title={label}
     >
-      {archived ? <Archive size={15} /> : <ClipboardCheck size={15} />}
+      {archived ? <Archive size={12} /> : <ClipboardCheck size={12} />}
+      <span>{label}</span>
     </span>
   );
 }

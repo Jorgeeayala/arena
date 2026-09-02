@@ -2515,10 +2515,6 @@ body {
   color: var(--text-main);
 }
 
-.pin-change-modal .auth-pin-form {
-  max-width: none;
-}
-
 .pin-change-intro {
   color: var(--text-muted);
   font-size: 13px;
@@ -2526,11 +2522,124 @@ body {
   margin: -4px 0 14px;
 }
 
-.pin-change-modal .auth-pin-input {
+.settings-modal .auth-pin-input {
   height: 48px;
   font-size: 22px;
   letter-spacing: 12px;
   text-indent: 12px;
+}
+
+.settings-modal {
+  max-width: 420px;
+}
+
+.settings-title-with-back {
+  gap: 6px;
+}
+
+.settings-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.settings-back-btn:hover {
+  color: var(--text-main);
+}
+
+.settings-section {
+  padding: 14px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.settings-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.settings-section-title {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card-hover);
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-action:hover {
+  border-color: var(--primary-border);
+  background-color: var(--bg-card);
+  color: var(--primary);
+}
+
+.settings-action svg {
+  flex-shrink: 0;
+}
+
+.settings-theme-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.settings-theme-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-theme-option:hover {
+  border-color: var(--primary-border);
+  color: var(--text-main);
+}
+
+.settings-theme-option.is-active {
+  background-color: var(--primary-light);
+  border-color: var(--primary-border);
+  color: var(--primary);
+}
+
+.settings-note {
+  margin: 8px 2px 0;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-pin-form {
+  max-width: none;
 }
 
 .team-member-chip {

@@ -13,12 +13,12 @@ import NewClient from './screens/NewClient';
 import AssignClients from './screens/AssignClients';
 import AppSplashLoader from './components/AppSplashLoader';
 import ScreenErrorBoundary from './components/ScreenErrorBoundary';
-import PinChangeDialog from './components/PinChangeDialog';
+import SettingsDialog from './components/SettingsDialog';
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
 import { formatPeriodLabel } from './utils';
 import { api } from './api';
-import { Calendar, User, Sun, Moon, Menu, X, UserCog, RefreshCw, KeyRound } from 'lucide-react';
+import { Calendar, User, Menu, X, UserCog, RefreshCw, Settings } from 'lucide-react';
 import './styles.css';
 
 const INITIAL_AUTH_STATE = {
@@ -87,7 +87,7 @@ export default function App({
   const [creatingWithHeaders, setCreatingWithHeaders] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignClientsOpen, setAssignClientsOpen] = useState(false);
-  const [pinChangeOpen, setPinChangeOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pinChangeError, setPinChangeError] = useState('');
   const [pinChangeSubmitting, setPinChangeSubmitting] = useState(false);
   const [pinChangeNotice, setPinChangeNotice] = useState('');
@@ -362,10 +362,6 @@ export default function App({
     };
   }, [assignClientsOpen, creatingWithHeaders, selectedClient, month, year]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
   // Cierra el menú hamburguesa (mobile) cada vez que cambia de pantalla,
   // para que no quede abierto tapando la siguiente vista.
   useEffect(() => {
@@ -441,7 +437,7 @@ export default function App({
 
   async function handleChangeUser() {
     authAttemptRef.current += 1;
-    setPinChangeOpen(false);
+    setSettingsOpen(false);
     setPinChangeError('');
     try {
       await api.flushPendingSaves();
@@ -460,9 +456,9 @@ export default function App({
     setUser(null);
   }
 
-  function openPinChange() {
+  function openSettings() {
     setPinChangeError('');
-    setPinChangeOpen(true);
+    setSettingsOpen(true);
   }
 
   async function handleChangePin(currentPin, newPin) {
@@ -481,7 +477,7 @@ export default function App({
         attemptsRemaining: undefined,
         lockedUntil: 0,
       }));
-      setPinChangeOpen(false);
+      setSettingsOpen(false);
       setPinChangeNotice('PIN actualizado correctamente. Las sesiones anteriores de tu cuenta se cerraron.');
     } catch (error) {
       setPinChangeError(error?.message || 'No se pudo cambiar el PIN. Probá nuevamente.');
@@ -528,20 +524,12 @@ export default function App({
             )}
             <button
               type="button"
-              className="real-exec-theme-button real-exec-change-pin-button"
-              onClick={openPinChange}
-              title="Cambiar mi PIN"
-              aria-label="Cambiar mi PIN"
+              className="real-exec-theme-button real-exec-settings-button"
+              onClick={openSettings}
+              title="Configuración"
+              aria-label="Abrir configuración"
             >
-              <KeyRound size={16} />
-            </button>
-            <button
-              type="button"
-              className="real-exec-theme-button"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
-            >
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              <Settings size={16} />
             </button>
             <button
               type="button"
@@ -611,43 +599,20 @@ export default function App({
               </motion.button>
             )}
 
-            {/* Cambiar mi PIN: acceso directo en desktop; en mobile vive
+            {/* Configuración: acceso directo en desktop; en mobile vive
                 dentro del drawer para no saturar la barra. */}
             {user && (
               <motion.button
-                className="pill-btn change-pin-btn hide-mobile"
+                className="pill-btn settings-btn hide-mobile"
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={openPinChange}
-                title="Cambiar mi PIN"
-                aria-label="Cambiar mi PIN"
+                onClick={openSettings}
+                title="Configuración"
+                aria-label="Abrir configuración"
               >
-                <KeyRound size={14} />
+                <Settings size={14} />
               </motion.button>
             )}
-
-            {/* Toggle de tema: en mobile se oculta (.hide-mobile) porque
-                vive adentro del menú hamburguesa de la izquierda. */}
-            <motion.button
-              className="theme-toggle-btn hide-mobile"
-              whileHover={{ scale: 1.08, rotate: 12 }}
-              whileTap={{ scale: 0.9, rotate: -20 }}
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
-            >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={theme}
-                  initial={{ opacity: 0, rotate: -90, scale: 0.5 }}
-                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                  exit={{ opacity: 0, rotate: 90, scale: 0.5 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-                </motion.div>
-              </AnimatePresence>
-            </motion.button>
 
             {/* Acceso directo en desktop (ahí no hay drawer -- el
                 hamburguesa es mobile-only). En mobile esta misma función
@@ -741,22 +706,13 @@ export default function App({
               <button
                 type="button"
                 className="mobile-menu-item"
-                onClick={toggleTheme}
-              >
-                {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-                <span>{theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}</span>
-              </button>
-
-              <button
-                type="button"
-                className="mobile-menu-item"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  openPinChange();
+                  openSettings();
                 }}
               >
-                <KeyRound size={17} />
-                <span>Cambiar mi PIN</span>
+                <Settings size={17} />
+                <span>Configuración</span>
               </button>
 
               {canAssignClients && year && month && (
@@ -842,16 +798,18 @@ export default function App({
         />
       </ClientsProvider>
 
-      <PinChangeDialog
-        key={pinChangeOpen ? 'pin-change-open' : 'pin-change-closed'}
-        open={pinChangeOpen}
+      <SettingsDialog
+        key={settingsOpen ? 'settings-open' : 'settings-closed'}
+        open={settingsOpen}
         user={user}
+        theme={theme}
         error={pinChangeError}
         submitting={pinChangeSubmitting}
         onClose={() => {
-          if (!pinChangeSubmitting) setPinChangeOpen(false);
+          if (!pinChangeSubmitting) setSettingsOpen(false);
         }}
-        onSubmit={handleChangePin}
+        onChangePin={handleChangePin}
+        onThemeChange={setTheme}
       />
     </div>
   );

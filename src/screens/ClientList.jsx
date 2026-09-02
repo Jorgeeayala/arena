@@ -33,8 +33,6 @@ import {
   UserCog,
   BarChart3,
   Archive,
-  Award,
-  Check,
 } from 'lucide-react';
 
 const itemVariants = {
@@ -684,12 +682,26 @@ export default function ClientList({ onSelect, onNewClient, readOnlyPreview = fa
   // contenedor con su propio scroll), por eso se usa el virtualizador de
   // "ventana" en vez del de contenedor.
   const listRef = useRef(null);
+  const [listOffsetTop, setListOffsetTop] = useState(0);
+
+  useEffect(() => {
+    const measure = () => setListOffsetTop(listRef.current?.offsetTop ?? 0);
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (listRef.current) observer.observe(listRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   const rowVirtualizer = useWindowVirtualizer({
     count: filteredAndSorted.length,
     estimateSize: () => 108, // alto aproximado de una tarjeta; se ajusta solo por fila via measureElement
     overscan: 6,
     gap: 10, // mismo valor que .client-list { gap: 10px } en styles.css
-    scrollMargin: listRef.current?.offsetTop ?? 0,
+    scrollMargin: listOffsetTop,
   });
 
   // Compute Summary Statistics (Table Resumen)
