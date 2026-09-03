@@ -146,6 +146,15 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   const [teamOrder, setTeamOrder] = useState(readSavedOrder);
   const [syncingUsers, setSyncingUsers] = useState(false);
 
+  // Si `user` no está en el equipo (recién logueado con un equipo viejo en
+  // caché, o un equipo local que no lo incluye), se suma al roster para que
+  // siempre aparezca en el reparto. Se hace por derivación (no en un efecto)
+  // porque `rosterUsers` es un estado con persistencia propia: la próxima
+  // sincronización con Sheets ya reemplaza el array completo.
+  if (user && !rosterUsers.includes(user)) {
+    rosterUsers.push(user);
+  }
+
   const teamUsers = useMemo(() => orderUsers(rosterUsers, teamOrder), [rosterUsers, teamOrder]);
 
   // Participantes del reparto. `null` = no se definió todavía = participan
@@ -278,15 +287,6 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
     },
     [user]
   );
-
-  // El usuario logueado siempre forma parte del equipo.
-  useEffect(() => {
-    if (user && !rosterUsers.includes(user)) {
-      const updated = [user, ...rosterUsers];
-      setRosterUsers(updated);
-      persistTeam(updated);
-    }
-  }, [user, rosterUsers]);
 
   // --- Columnas detectadas (una sola vez, compartidas) --------------------
   const nameKey = useMemo(() => (headers.length ? pickNameColumn(headers) : null), [headers]);
@@ -475,25 +475,25 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
 
   // Carga de la planilla: se dispara al montar y cada vez que cambia el
   // período (año/mes). Mientras no haya año y mes elegidos (estamos en los
-  // pickers) no se pide nada al backend.
+  // pickers) no se pide nada al backend. El contenido del período anterior se
+  // descarta cuando el año o el mes cambian a null (volver al picker): el
+  // estado deriva del período, así que se reinicia junto con la pantalla.
   useEffect(() => {
-    if (!year || !month) {
-      setHeaders([]);
-      setRows([]);
-      setError('');
-      setLoading(false);
-      return;
-    }
+    if (!year || !month) return;
     // Es otra planilla: los datos y filtros anteriores ya no aplican.
     clearFilters();
     reload(false);
   }, [year, month, reload, clearFilters]);
 
-  // El equipo de usuarios no depende de la planilla, sólo del usuario.
+  // --- Equipo de usuarios no depende de la planilla, sólo del usuario -----
+  // La sincronización con Sheets arranca en el montaje con el usuario
+  // logueado. No depende del período: se hace una vez por sesión de usuario.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- primera corrida al montar
   useEffect(() => {
     if (!user) return;
     syncTeamUsers(false);
-  }, [user, syncTeamUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- corre sólo al montar / al cambiar user
+  }, [user]);
 
 
   // --- Escritura de celdas (compartida) ----------------------------------
@@ -706,6 +706,8 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   return <ClientsContext.Provider value={value}>{children}</ClientsContext.Provider>;
 }
 
+// Hook de acceso al contexto compartido de la planilla.
+// oxlint-disable-next-line react/only-export-components -- archivo de contexto: convive el Provider (componente) con useClients (hook)
 export function useClients() {
   const ctx = useContext(ClientsContext);
   if (!ctx) {

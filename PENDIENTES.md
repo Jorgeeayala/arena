@@ -67,7 +67,14 @@ Estado de referencia: autenticación individual y configuración inicial de PIN 
 - [ ] Implementar `action: "create"` en el backend antes de habilitar definitivamente el alta de nuevos clientes.
 - [ ] Configurar el ID definitivo de la extensión donde corresponda.
 - [ ] Definir, si se necesita una aplicación de PC, el puerto/origen y protocolo del puente local.
-- [ ] Revisar los warnings heredados del lint y el estado de dependencias con `npm audit` en una tarea separada.
+- [x] Revisar los warnings heredados del lint y el estado de dependencias con `npm audit` en una tarea separada.
+  - `npm run lint` pasó de 8 warnings a **0 warnings / 0 errores**: los `set-state-in-effect`
+    de los pickers (Year/Name/Month), del contexto (`ClientsContext`) y del menú mobile en
+    `App.jsx`, más un falso positivo de `react/only-export-components` (deshabilitado puntualmente
+    con su justificación). Los pickers cargan una sola vez al montar y reintentan solo con su botón.
+  - `npm audit`: 3 vulnerabilidades **moderate** (dev-only, cadena `@capacitor/cli` → `xcode` →
+    `uuid` <11.1.1). Sin fix disponible en la versión publicada de Capacitor; no aplica a la app
+    compilada ni al APK. Re-evaluar al actualizar Capacitor.
 - [x] Actualizar la documentación general del `README.md`, que todavía describe el flujo inicial del proyecto.
   - Describe autenticación por PIN, sesión, roles, lista, detalle,
     asignación, panel ejecutivo, Configuración y notas de seguridad.

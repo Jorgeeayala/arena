@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { api } from '../api';
 import { Layers, AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react';
@@ -34,31 +34,46 @@ export default function MonthPicker({ year, onPick, onChangeYear }) {
     setError('');
     api
       .listMonths(year, force)
-      .then(setMonths)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (mountedRef.current) setMonths(data);
+      })
+      .catch((err) => {
+        if (mountedRef.current) setError(err.message);
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
   }
 
+  // La carga del año se dispara cuando cambia `year`. `lastYearLoaded` y
+  // `hasLoaded` derivan del estado para no setear loading/error sincrónicamente
+  // dentro del efecto (la primer carga ya arranca con loading=true).
+  const [lastYearLoaded, setLastYearLoaded] = useState(null);
+  const mountedRef = useRef(true);
+  const hasLoaded = lastYearLoaded === year && (months.length > 0 || Boolean(error) || !loading);
   useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-    setError('');
+    if (hasLoaded) return;
+    mountedRef.current = true;
+    let cancelled = false;
     api
       .listMonths(year)
       .then((data) => {
-        if (isMounted) setMonths(data);
+        if (!cancelled) setMonths(data);
       })
       .catch((err) => {
-        if (isMounted) setError(err.message);
+        if (!cancelled) setError(err.message);
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        if (!cancelled) setLoading(false);
+        setLastYearLoaded(year);
+        mountedRef.current = false;
       });
 
     return () => {
-      isMounted = false;
+      cancelled = true;
+      mountedRef.current = false;
     };
-  }, [year]);
+  }, [year, hasLoaded]);
 
   return (
     <div className="screen centered">

@@ -361,12 +361,6 @@ export default function App({
     };
   }, [assignClientsOpen, creatingWithHeaders, selectedClient, month, year]);
 
-  // Cierra el menú hamburguesa (mobile) cada vez que cambia de pantalla,
-  // para que no quede abierto tapando la siguiente vista.
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [year, month, selectedClient, creatingWithHeaders, assignClientsOpen]);
-
   // La confirmación de PIN actualizado desaparece sola para no acumular
   // avisos en pantalla.
   useEffect(() => {
@@ -378,6 +372,16 @@ export default function App({
   function handlePickUser(chosenUser) {
     localStorage.setItem(STORAGE_KEY_USER, chosenUser);
     setUser(chosenUser);
+  }
+
+  function handlePickYear(chosenYear) {
+    setMobileMenuOpen(false);
+    setYear(chosenYear);
+  }
+
+  function handlePickMonth(chosenMonth) {
+    setMobileMenuOpen(false);
+    setMonth(chosenMonth);
   }
 
   async function handlePinSubmit(pin) {
@@ -455,7 +459,14 @@ export default function App({
     setUser(null);
   }
 
+  // Cierra el menú mobile antes de navegar a otra pantalla. No hay doble
+  // render: si el menú ya está cerrado, el estado no cambia.
+  function closeMobileMenu() {
+    setMobileMenuOpen(false);
+  }
+
   function openSettings() {
+    setMobileMenuOpen(false);
     setPinChangeError('');
     setSettingsOpen(true);
   }
@@ -600,6 +611,7 @@ export default function App({
                   setCreatingWithHeaders(null);
                   setAssignClientsOpen(false);
                   setMonth(null);
+                  setMobileMenuOpen(false);
                 }}
                 title="Cambiar mes o año"
               >
@@ -729,6 +741,7 @@ export default function App({
                   type="button"
                   className="mobile-menu-item"
                   onClick={() => {
+                    closeMobileMenu();
                     setSelectedClient(null);
                     setCreatingWithHeaders(null);
                     setAssignClientsOpen(true);
@@ -792,8 +805,8 @@ export default function App({
           onPinSubmit={handlePinSubmit}
           onPinSetup={handleInitialPinSetup}
           onChangeUser={handleChangeUser}
-          onPickYear={setYear}
-          onPickMonth={setMonth}
+          onPickYear={handlePickYear}
+          onPickMonth={handlePickMonth}
           onChangeYear={() => setYear(null)}
           onChangeMonth={() => setMonth(null)}
           selectedClient={selectedClient}
