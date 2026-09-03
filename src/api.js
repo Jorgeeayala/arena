@@ -33,18 +33,6 @@ class ApiError extends Error {
   }
 }
 
-function assertClientWritesAllowed() {
-  const isReadOnlyPreview =
-    typeof window !== 'undefined' &&
-    window.location.pathname.endsWith('/executive-preview.html');
-
-  if (isReadOnlyPreview) {
-    throw new ApiError('La vista ejecutiva está habilitada sólo para lectura', {
-      code: 'READ_ONLY_PREVIEW',
-    });
-  }
-}
-
 function removeLegacySensitiveCache() {
   try {
     localStorage.removeItem(LEGACY_STORAGE_CACHE_KEY);
@@ -425,7 +413,6 @@ export const api = {
   },
 
   updateCell: async ({ year, sheet, row, column, value }) => {
-    assertClientWritesAllowed();
     const key = `${year}_${sheet}`;
     if (cache.read[key]) {
       const targetRow = cache.read[key].rows.find((rowItem) => rowItem._row === row);
@@ -439,7 +426,6 @@ export const api = {
   flushPendingSaves: flushNow,
 
   createClient: async ({ year, sheet, values }) => {
-    assertClientWritesAllowed();
     const response = await request({ action: 'create', year, sheet, values });
     const key = `${year}_${sheet}`;
 

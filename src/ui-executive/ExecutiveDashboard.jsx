@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Clock3,
   Filter,
+  Plus,
   RefreshCw,
   Search,
   UserRound,
@@ -47,14 +48,9 @@ function StatusIcon({ type, active }) {
     : (active ? 'Presentado' : 'Pendiente');
 
   return (
-    <span
-      className={`real-exec-status-chip ${active ? 'is-active' : 'is-inactive'} ${archived ? 'is-archived' : 'is-presented'}`}
-      role="img"
-      aria-label={label}
-      title={label}
-    >
-      {archived ? <Archive size={12} /> : <ClipboardCheck size={12} />}
-      <span>{label}</span>
+    <span className={`real-exec-status-icon ${active ? 'is-active' : 'is-inactive'}`}
+      role="img" aria-label={label} title={label}>
+      {archived ? <Archive size={15}/> : <ClipboardCheck size={15}/>}
     </span>
   );
 }
@@ -68,11 +64,12 @@ function Metric({ icon: Icon, value, label, tone }) {
   );
 }
 
-const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect }, ref) {
+const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, onNewClient }, ref) {
   const {
     user,
     year,
     month,
+    headers,
     assignedRows,
     loading,
     error,
@@ -269,7 +266,15 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect }, 
             <h2>Todos los clientes</h2>
             <p>Consulta de estados, responsables y vencimientos.</p>
           </div>
-          <small><strong>{filteredRows.length}</strong> de {metrics.total}</small>
+          <div className="real-exec-clients-actions">
+            {onNewClient && headers && headers.length ? (
+              <button type="button" className="real-exec-new-client-btn"
+                onClick={() => onNewClient(headers)} title="Cargar un cliente nuevo">
+                <Plus size={15} /><span>Nuevo cliente</span>
+              </button>
+            ) : null}
+            <small><strong>{filteredRows.length}</strong> de {metrics.total}</small>
+          </div>
         </div>
 
         <div className="real-exec-search-row">

@@ -7,7 +7,6 @@ import PinLogin from './screens/PinLogin';
 import PinSetup from './screens/PinSetup';
 import YearPicker from './screens/YearPicker';
 import MonthPicker from './screens/MonthPicker';
-import ClientList from './screens/ClientList';
 import ClientDetail from './screens/ClientDetail';
 import NewClient from './screens/NewClient';
 import AssignClients from './screens/AssignClients';
@@ -522,6 +521,16 @@ export default function App({
                 <span>{formatPeriodLabel(month, year)}</span>
               </button>
             )}
+            {canAssignClients && year && month && !selectedClient && (
+              <button type="button"
+                className="real-exec-period-button real-exec-assign-button"
+                onClick={() => { setSelectedClient(null);
+                  setCreatingWithHeaders(null); setAssignClientsOpen(true); }}
+                title="Asignar clientes">
+                <UserCog size={14} />
+                <span>Asignar</span>
+              </button>
+            )}
             <button
               type="button"
               className="real-exec-theme-button real-exec-settings-button"
@@ -957,16 +966,9 @@ function PeriodScreens({
     }
 
     return (
-      <motion.div key={`client-list-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
-        {PeriodOverviewComponent ? (
-          <PeriodOverviewComponent ref={periodOverviewRef} onSelect={onSelectClient} />
-        ) : (
-          <ClientList
-            onSelect={onSelectClient}
-            onNewClient={onNewClient}
-            readOnlyPreview={readOnlyPreview}
-          />
-        )}
+      <motion.div key={`executive-overview-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+        <PeriodOverviewComponent ref={periodOverviewRef}
+          onSelect={onSelectClient} onNewClient={onNewClient} />
       </motion.div>
     );
   };
@@ -985,7 +987,7 @@ function PeriodScreens({
               ? `new-client-${year}-${month}`
               : selectedClient
                 ? `client-detail-${selectedClient._row}-${year}-${month}`
-                : `client-list-${year}-${month}`;
+                : `executive-overview-${year}-${month}`;
 
   // Cada pantalla vuelve a una ruta segura diferente. Cambiar la key desmonta
   // el boundary que falló para que el error no sobreviva a la navegación.
