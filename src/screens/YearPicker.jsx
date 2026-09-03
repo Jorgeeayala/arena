@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { api } from '../api';
 import { Calendar, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
@@ -29,7 +29,7 @@ export default function YearPicker({ onPick, onReady }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadYears = useCallback(() => {
+  function loadYears() {
     setLoading(true);
     setError('');
     api
@@ -40,11 +40,12 @@ export default function YearPicker({ onPick, onReady }) {
         setLoading(false);
         onReady?.();
       });
-  }, [onReady]);
+  }
 
   useEffect(() => {
     loadYears();
-  }, [loadYears]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; el reintento manual vive en el botón
+  }, []);
 
   return (
     <div className="screen centered">

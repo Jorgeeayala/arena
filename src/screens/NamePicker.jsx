@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { api } from '../api';
 import { STORAGE_KEY_USER } from '../config';
@@ -30,7 +30,7 @@ export default function NamePicker({ onPick, onReady }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadUsers = useCallback(() => {
+  function loadUsers() {
     setLoading(true);
     setError('');
     api
@@ -41,11 +41,12 @@ export default function NamePicker({ onPick, onReady }) {
         setLoading(false);
         onReady?.();
       });
-  }, [onReady]);
+  }
 
   useEffect(() => {
     loadUsers();
-  }, [loadUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; el reintento manual vive en el botón
+  }, []);
 
   function choose(name) {
     localStorage.setItem(STORAGE_KEY_USER, name);
