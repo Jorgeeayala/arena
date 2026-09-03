@@ -1,8 +1,9 @@
 /*
- * Estilos exclusivos de /executive-preview.html.
- * La entrada normal no importa este archivo y conserva su diseño original.
+ * Tema de la interfaz ejecutiva.
+ * La entrada principal (src/main.jsx) monta la app en modo ejecutivo e
+ * importa este archivo; el tema queda re-scopado a .real-exec-app.
  */
-.executive-preview-root {
+.real-exec-app {
   --rx-app: #edf1f3;
   --rx-surface: #ffffff;
   --rx-soft: #f4f5f6;
@@ -27,7 +28,7 @@
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-[data-theme="dark"] .executive-preview-root {
+[data-theme="dark"] .real-exec-app {
   --rx-app: #1c1f23;
   --rx-surface: #23313b;
   --rx-soft: #293b47;
@@ -48,7 +49,7 @@
   --rx-red-soft: rgba(245, 138, 131, 0.14);
 }
 
-.executive-preview-root .real-exec-app {
+.real-exec-app {
   min-height: 100vh;
   background:
     radial-gradient(circle at 88% 7%, rgba(39, 101, 141, 0.14), transparent 27%),
@@ -621,6 +622,35 @@
   color: var(--rx-brand-dark);
 }
 
+.real-exec-clients-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.real-exec-new-client-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--rx-brand-dark), var(--rx-brand));
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.12s;
+}
+
+.real-exec-new-client-btn:hover {
+  filter: brightness(1.06);
+}
+
+.real-exec-new-client-btn:active {
+  transform: scale(0.97);
+}
+
 .real-exec-search-row {
   display: grid;
   grid-template-columns: minmax(240px, 0.8fr) 1.2fr;
@@ -717,7 +747,7 @@
 .real-exec-table-head,
 .real-exec-client-row {
   display: grid;
-  grid-template-columns: 32px minmax(230px, 1.5fr) minmax(115px, 0.75fr) 74px 172px 15px;
+  grid-template-columns: 32px minmax(230px, 1.5fr) minmax(115px, 0.75fr) 74px 74px 15px;
   align-items: center;
   gap: 9px;
   text-align: left;
@@ -832,39 +862,23 @@
   gap: 5px;
 }
 
-.real-exec-status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 7px;
-  min-width: 0;
+.real-exec-status-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
   border: 1px solid var(--rx-line);
-  border-radius: 999px;
-  background: var(--rx-soft);
+  border-radius: 9px;
   color: var(--rx-subtle);
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1.1;
-  white-space: nowrap;
 }
 
-.real-exec-status-chip svg {
-  flex-shrink: 0;
-}
-
-.real-exec-status-chip.is-active.is-presented {
+.real-exec-status-icon.is-active {
   border-color: color-mix(in srgb, var(--rx-brand) 24%, var(--rx-line));
   background: var(--rx-brand-soft);
   color: var(--rx-brand-dark);
 }
 
-.real-exec-status-chip.is-active.is-archived {
-  border-color: color-mix(in srgb, var(--rx-brand) 24%, var(--rx-line));
-  background: var(--rx-brand-soft);
-  color: var(--rx-brand-dark);
-}
-
-.real-exec-status-chip.is-inactive {
+.real-exec-status-icon.is-inactive {
   background: var(--rx-soft);
 }
 
@@ -930,60 +944,32 @@
 }
 
 /* Detalle actual, presentado como lectura dentro del lenguaje ejecutivo. */
-.executive-preview-root .real-exec-app .screen.wide {
+.real-exec-app .screen.wide {
   color: var(--rx-ink);
 }
 
-.executive-preview-root .real-exec-app .client-detail-header,
-.executive-preview-root .real-exec-app .field-card {
+.real-exec-app .client-detail-header,
+.real-exec-app .field-card {
   border-color: var(--rx-line);
   background: var(--rx-surface);
   box-shadow: 0 10px 30px rgba(15, 61, 70, 0.07);
 }
 
-.executive-preview-root .real-exec-app .client-detail-header {
+.real-exec-app .client-detail-header {
   border-radius: 20px;
   background: linear-gradient(125deg, #1c1f23, #19506f);
   color: #ffffff;
 }
 
-.executive-preview-root .real-exec-app .client-detail-title,
-.executive-preview-root .real-exec-app .client-detail-meta {
+.real-exec-app .client-detail-title,
+.real-exec-app .client-detail-meta {
   color: #ffffff;
 }
 
-.executive-preview-root .real-exec-app .field-readonly-value {
+.real-exec-app .field-readonly-value {
   border-color: var(--rx-line);
   background: var(--rx-soft);
   color: var(--rx-ink);
-}
-
-/* Insignia inequívoca para no confundir esta entrada con producción. */
-.executive-preview-badge {
-  position: fixed;
-  right: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  z-index: 10000;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid rgba(111, 165, 195, 0.38);
-  border-radius: 999px;
-  background: rgba(28, 31, 35, 0.95);
-  color: #d2d3d6;
-  box-shadow: 0 12px 30px rgba(28, 31, 35, 0.34);
-  backdrop-filter: blur(12px);
-  font-size: 11px;
-  pointer-events: none;
-}
-
-.executive-preview-badge svg {
-  color: #8fb8cf;
-}
-
-.executive-preview-badge strong {
-  color: #ffffff;
 }
 
 @media (max-width: 860px) {
@@ -1005,7 +991,7 @@
 
   .real-exec-table-head,
   .real-exec-client-row {
-    grid-template-columns: 28px minmax(190px, 1.4fr) minmax(100px, 0.75fr) 70px 150px 13px;
+    grid-template-columns: 28px minmax(190px, 1.4fr) minmax(100px, 0.75fr) 70px 70px 13px;
   }
 }
 
@@ -1163,22 +1149,11 @@
   .real-exec-statuses {
     grid-column: 3;
     grid-row: 2 / span 2;
-    align-self: center;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    gap: 4px;
+    align-self: end;
   }
 
   .real-exec-chevron {
     display: none;
-  }
-
-  .executive-preview-badge {
-    right: 10px;
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    left: 10px;
-    justify-content: center;
   }
 }
 
