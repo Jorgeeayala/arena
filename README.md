@@ -12,14 +12,20 @@ solo lectura.
 - **Alta inicial de PIN** durante la configuración (sujeta a las
   propiedades del backend).
 - Selección de **año y mes** según las planillas disponibles.
-- **Lista de clientes** con búsqueda, filtros, orden, resumen por día,
-  swipe para marcar Presentado/Archivado y edición de encargado.
-- **Detalle de cliente** con edición de campos y vista de solo lectura
-  en el preview ejecutivo.
+- **Panel del período** con métricas, prioridades, carga por equipo,
+  resumen por vencimiento y la cartera completa de clientes.
+  - Búsqueda por nombre o RUC y filtros rápidos.
+  - **Más filtros**: vencimiento, estado y encargado (compartidos con
+    "Asignar clientes").
+  - **Acciones rápidas**: marcar Presentado y Archivado desde la fila,
+    sin abrir el cliente.
+  - Lista **virtualizada**: sólo se dibujan las filas visibles, así el
+    período se mantiene fluido aunque tenga cientos de clientes.
+- **Detalle de cliente** con edición de campos, acceso a **Marangatu** y
+  vista de solo lectura en el preview ejecutivo.
 - **Asignar clientes** (roles con permiso).
-- **Panel ejecutivo** con métricas, prioridades, carga por equipo y
-  tabla de clientes con filtros rápidos.
-- **Configuración** con tema claro/oscuro y cambio de PIN.
+- **Configuración** con tema claro/oscuro, **tamaño de texto**
+  (Compacto / Normal / Grande / Extra) y cambio de PIN.
 - **Marangatu** con apertura del login de la SET y autocompletado
   cuando la extensión está instalada.
 
@@ -53,12 +59,7 @@ npm run dev
 
 Abrí `http://localhost:3000/`.
 
-### 4. Vista ejecutiva y laboratorio UI
-
-- Vista ejecutiva: `http://localhost:3000/executive-preview.html`
-- Laboratorio UI: `http://localhost:3000/ui-preview.html`
-
-### 5. Build de producción
+### 4. Build de producción
 
 ```bash
 npm run build
@@ -80,13 +81,16 @@ Capacitor.
 src/
   App.jsx                 estructura de pantallas y sesión
   api.js                  llamadas al backend (POST)
+  uiPreferences.js        preferencias locales (tamaño de texto)
   context/ClientsContext  estado compartido de planilla/equipo/filtros
-  screens/                pickers, lista, detalle, asignación, nuevo cliente
-  ui-executive/           vista ejecutiva
-  ui-preview/             laboratorio de UI
+  screens/                pickers, detalle, asignación, nuevo cliente
+  ui-executive/           panel del período (interfaz actual)
   components/             modales / utilidades de UI
 AppsScript-Code-auth-PROPUESTA.gs   backend de referencia (Apps Script)
 ```
+
+La interfaz que se monta es la ejecutiva: `src/main.jsx` renderiza
+`<App uiMode="executive" periodOverviewComponent={ExecutiveDashboard} />`.
 
 ## Notas de seguridad
 

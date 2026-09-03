@@ -3,6 +3,32 @@
  * La entrada principal (src/main.jsx) monta la app en modo ejecutivo e
  * importa este archivo; el tema queda re-scopado a .real-exec-app.
  */
+
+/*
+ * Escala tipográfica
+ * ------------------
+ * La primera versión de este tema fijaba los tamaños en px sueltos y muy
+ * chicos (7, 8, 9 y 10px en decenas de reglas): en pantalla se leía con
+ * esfuerzo y no había forma de agrandarlo. Ahora cada texto usa un token
+ * de esta escala y todos los tokens se multiplican por --ui-font-scale,
+ * la preferencia global que se elige en Configuración → Tamaño de texto
+ * (definida en styles.css sobre :root y persistida en localStorage).
+ *
+ * Los valores base son los de la escala "Normal". El mínimo real es 12px:
+ * por debajo de eso el texto deja de ser cómodo en una jornada de trabajo.
+ */
+.real-exec-app {
+  --rx-fs-2xs: calc(12px * var(--ui-font-scale, 1)); /* sellos, metadatos */
+  --rx-fs-xs: calc(13px * var(--ui-font-scale, 1));  /* apoyo, etiquetas */
+  --rx-fs-sm: calc(14px * var(--ui-font-scale, 1));  /* texto de interfaz */
+  --rx-fs-md: calc(15px * var(--ui-font-scale, 1));  /* cuerpo */
+  --rx-fs-lg: calc(16px * var(--ui-font-scale, 1));  /* cuerpo destacado */
+  --rx-fs-xl: calc(18px * var(--ui-font-scale, 1));  /* marca, títulos chicos */
+  --rx-fs-2xl: calc(22px * var(--ui-font-scale, 1)); /* títulos de sección */
+  --rx-fs-3xl: calc(27px * var(--ui-font-scale, 1)); /* números de métrica */
+  --rx-fs-4xl: calc(32px * var(--ui-font-scale, 1)); /* número del anillo */
+}
+
 .real-exec-app {
   --rx-app: #edf1f3;
   --rx-surface: #ffffff;
@@ -110,14 +136,14 @@
 
 .real-exec-navbar-brand strong {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 16px;
+  font-size: var(--rx-fs-xl);
   font-weight: 600;
 }
 
 .real-exec-navbar-brand span,
 .real-exec-user-button small {
   color: #a0a3a7;
-  font-size: 8px;
+  font-size: var(--rx-fs-2xs);
 }
 
 .real-exec-navbar-actions {
@@ -142,7 +168,7 @@
   gap: 6px;
   padding: 0 10px;
   border-radius: 10px;
-  font-size: 9px;
+  font-size: var(--rx-fs-xs);
   font-weight: 700;
 }
 
@@ -179,15 +205,15 @@
   border-radius: 50%;
   background: linear-gradient(145deg, #27658d, #19506f);
   color: #ffffff;
-  font-size: 9px;
+  font-size: var(--rx-fs-xs);
   font-weight: 800;
 }
 
 .real-exec-user-button strong {
   overflow: hidden;
-  max-width: 110px;
+  max-width: 14ch;
   color: #ffffff;
-  font-size: 9px;
+  font-size: var(--rx-fs-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -257,7 +283,7 @@
   align-items: center;
   gap: 5px;
   color: #8fb8cf;
-  font-size: 9px;
+  font-size: var(--rx-fs-2xs);
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -266,7 +292,7 @@
 .real-exec-hero h1 {
   margin-top: 9px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(37px, 5vw, 54px);
+  font-size: calc(clamp(34px, 4.6vw, 48px) * var(--ui-font-scale, 1));
   font-weight: 500;
   line-height: 0.98;
   letter-spacing: -0.045em;
@@ -276,7 +302,7 @@
   max-width: 430px;
   margin-top: 13px;
   color: #d2d3d6;
-  font-size: 11px;
+  font-size: var(--rx-fs-md);
   line-height: 1.55;
 }
 
@@ -292,12 +318,12 @@
   background: #e7e9ea;
   color: #233850;
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--rx-fs-sm);
   font-weight: 750;
 }
 
 .real-exec-progress-card {
-  width: 205px;
+  width: min(240px, 34vw);
   align-self: center;
   padding: 17px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -308,7 +334,7 @@
 
 .real-exec-progress-card > span {
   color: #a9c2cf;
-  font-size: 7px;
+  font-size: var(--rx-fs-2xs);
   font-weight: 800;
   letter-spacing: 0.13em;
 }
@@ -317,7 +343,7 @@
   display: block;
   margin-top: 9px;
   color: #bcbec3;
-  font-size: 8px;
+  font-size: var(--rx-fs-xs);
   text-align: center;
 }
 
@@ -344,12 +370,12 @@
   z-index: 1;
   grid-area: 1 / 1;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 26px;
+  font-size: var(--rx-fs-4xl);
   font-weight: 500;
 }
 
 .real-exec-progress-ring small {
-  font-size: 12px;
+  font-size: var(--rx-fs-lg);
 }
 
 .real-exec-metrics {
@@ -401,14 +427,14 @@
 }
 
 .real-exec-metric strong {
-  font-size: 21px;
+  font-size: var(--rx-fs-3xl);
   line-height: 1;
 }
 
 .real-exec-metric small {
   margin-top: 4px;
   color: var(--rx-muted);
-  font-size: 9px;
+  font-size: var(--rx-fs-xs);
 }
 
 .real-exec-metric.tone-blue .real-exec-metric-icon {
@@ -467,7 +493,7 @@
 
 .real-exec-section-heading > div > span {
   color: var(--rx-brand);
-  font-size: 7px;
+  font-size: var(--rx-fs-2xs);
   font-weight: 850;
   letter-spacing: 0.11em;
 }
@@ -475,20 +501,20 @@
 .real-exec-section-heading h2 {
   margin-top: 2px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 18px;
+  font-size: var(--rx-fs-2xl);
   font-weight: 500;
   letter-spacing: -0.015em;
 }
 
 .real-exec-section-heading > small {
-  min-width: 27px;
-  height: 27px;
+  min-width: 2.1em;
+  height: 2.1em;
   display: grid;
   place-items: center;
   border-radius: 9px;
   background: var(--rx-amber-soft);
   color: var(--rx-amber);
-  font-size: 9px;
+  font-size: var(--rx-fs-xs);
   font-weight: 800;
 }
 
@@ -527,14 +553,14 @@
 .real-exec-priority-card strong {
   overflow: hidden;
   color: var(--rx-ink);
-  font-size: 10px;
+  font-size: var(--rx-fs-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .real-exec-priority-card small {
   color: var(--rx-muted);
-  font-size: 8px;
+  font-size: var(--rx-fs-2xs);
 }
 
 .real-exec-priority-card em {
@@ -542,7 +568,7 @@
   border-radius: 7px;
   background: var(--rx-amber-soft);
   color: var(--rx-amber);
-  font-size: 8px;
+  font-size: var(--rx-fs-2xs);
   font-style: normal;
   font-weight: 750;
 }
@@ -554,17 +580,17 @@
   padding: 14px 0 4px;
   border-top: 1px solid var(--rx-line);
   color: var(--rx-green);
-  font-size: 10px;
+  font-size: var(--rx-fs-sm);
 }
 
 .real-exec-workload-row {
   display: grid;
-  grid-template-columns: 75px 1fr 20px;
+  grid-template-columns: minmax(64px, max-content) 1fr minmax(20px, max-content);
   align-items: center;
   gap: 8px;
   margin: 13px 0;
   color: var(--rx-muted);
-  font-size: 9px;
+  font-size: var(--rx-fs-xs);
 }
 
 .real-exec-workload-row > span {
@@ -594,7 +620,94 @@
 
 .real-exec-no-data {
   color: var(--rx-muted);
-  font-size: 9px;
+  font-size: var(--rx-fs-xs);
+}
+
+/* Resumen por día de vencimiento. */
+.real-exec-summary {
+  margin-top: 13px;
+  padding: 18px;
+  border: 1px solid var(--rx-line);
+  border-radius: 20px;
+  background: var(--rx-surface);
+  box-shadow: 0 11px 32px rgba(15, 61, 70, 0.07);
+}
+
+.real-exec-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 9px;
+}
+
+.real-exec-summary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px;
+  border: 1px solid var(--rx-line);
+  border-radius: 13px;
+  background: var(--rx-soft);
+  color: var(--rx-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.14s ease, background 0.14s ease, transform 0.12s ease;
+}
+
+.real-exec-summary-cell:hover {
+  border-color: var(--rx-line-strong);
+}
+
+.real-exec-summary-cell:active {
+  transform: scale(0.98);
+}
+
+.real-exec-summary-cell.is-active {
+  border-color: var(--rx-brand);
+  background: var(--rx-brand-soft);
+}
+
+.real-exec-summary-day {
+  color: var(--rx-ink);
+  font-size: var(--rx-fs-xs);
+  font-weight: 800;
+}
+
+.real-exec-summary-count {
+  color: var(--rx-muted);
+  font-size: var(--rx-fs-2xs);
+}
+
+.real-exec-summary-count strong {
+  color: var(--rx-brand-dark);
+  font-size: var(--rx-fs-sm);
+}
+
+.real-exec-summary-bar {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--rx-hover);
+}
+
+.real-exec-summary-bar i {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--rx-brand-dark), var(--rx-brand));
+}
+
+.real-exec-summary-pending {
+  color: var(--rx-amber);
+  font-size: var(--rx-fs-2xs);
+  font-weight: 700;
+}
+
+.real-exec-summary-cell.is-done .real-exec-summary-pending {
+  color: var(--rx-green);
+}
+
+.real-exec-summary-cell.is-done .real-exec-summary-bar i {
+  background: var(--rx-green);
 }
 
 /* Lista: sólo lectura y sin textos redundantes de estado. */
@@ -611,7 +724,7 @@
 .real-exec-clients-heading p {
   margin-top: 4px;
   color: var(--rx-muted);
-  font-size: 9px;
+  font-size: var(--rx-fs-xs);
 }
 
 .real-exec-clients-heading > small {
@@ -637,7 +750,7 @@
   border-radius: 999px;
   background: linear-gradient(90deg, var(--rx-brand-dark), var(--rx-brand));
   color: #ffffff;
-  font-size: 10px;
+  font-size: var(--rx-fs-sm);
   font-weight: 800;
   cursor: pointer;
   transition: filter 0.15s, transform 0.12s;
@@ -660,7 +773,7 @@
 }
 
 .real-exec-search {
-  height: 41px;
+  min-height: calc(2.6em + 14px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -683,7 +796,7 @@
   outline: 0;
   background: transparent;
   color: var(--rx-ink);
-  font-size: 10px;
+  font-size: var(--rx-fs-md);
 }
 
 .real-exec-search input::placeholder {
@@ -729,13 +842,131 @@
   background: transparent;
   color: var(--rx-muted);
   cursor: pointer;
-  font-size: 8px;
+  font-size: var(--rx-fs-xs);
   font-weight: 700;
 }
 
 .real-exec-filters button.is-active {
   background: var(--rx-brand-soft);
   color: var(--rx-brand-dark);
+}
+
+/* "Más filtros": abre el panel con vencimiento, estado y encargado. */
+.real-exec-more-filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--rx-line) !important;
+}
+
+.real-exec-more-filters em {
+  min-width: 1.5em;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: var(--rx-brand);
+  color: #ffffff;
+  font-size: 0.85em;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.real-exec-advanced-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 13px;
+  padding: 14px;
+  border: 1px solid var(--rx-line);
+  border-radius: 14px;
+  background: var(--rx-soft);
+}
+
+.real-exec-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.real-exec-filter-label {
+  color: var(--rx-subtle);
+  font-size: var(--rx-fs-2xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.real-exec-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.real-exec-filter-chips button {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--rx-line);
+  border-radius: 999px;
+  background: var(--rx-surface);
+  color: var(--rx-muted);
+  cursor: pointer;
+  font-size: var(--rx-fs-xs);
+  font-weight: 700;
+}
+
+.real-exec-filter-chips button:hover {
+  border-color: var(--rx-line-strong);
+}
+
+.real-exec-filter-chips button.is-active {
+  border-color: color-mix(in srgb, var(--rx-brand) 45%, var(--rx-line));
+  background: var(--rx-brand-soft);
+  color: var(--rx-brand-dark);
+}
+
+.real-exec-clear-filters {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--rx-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rx-red);
+  cursor: pointer;
+  font-size: var(--rx-fs-xs);
+  font-weight: 700;
+}
+
+/* Aviso de error de una acción rápida (marcar Presentado/Archivado). */
+.real-exec-action-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--rx-red) 35%, var(--rx-line));
+  border-radius: 12px;
+  background: var(--rx-red-soft);
+  color: var(--rx-red);
+  font-size: var(--rx-fs-xs);
+  font-weight: 600;
+}
+
+.real-exec-action-error span {
+  flex: 1;
+}
+
+.real-exec-action-error button {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
 .real-exec-table {
@@ -747,27 +978,55 @@
 .real-exec-table-head,
 .real-exec-client-row {
   display: grid;
-  grid-template-columns: 32px minmax(230px, 1.5fr) minmax(115px, 0.75fr) 74px 74px 15px;
+  grid-template-columns:
+    minmax(28px, auto)
+    minmax(180px, 1.6fr)
+    minmax(96px, 0.8fr)
+    minmax(64px, auto)
+    minmax(64px, auto)
+    15px;
   align-items: center;
   gap: 9px;
   text-align: left;
 }
 
 .real-exec-table-head {
-  min-height: 35px;
+  min-height: calc(2.6em + 4px);
   padding: 0 12px;
   border-bottom: 1px solid var(--rx-line);
   background: var(--rx-soft);
   color: var(--rx-subtle);
-  font-size: 7px;
+  font-size: var(--rx-fs-2xs);
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
+/* Cuerpo virtualizado: alto total reservado por el virtualizador y filas
+   posicionadas de forma absoluta dentro de él. Sólo existen en el DOM las
+   que se ven en pantalla. */
+.real-exec-virtual-body {
+  position: relative;
+  width: 100%;
+}
+
+.real-exec-virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+/* Mientras se recalcula el filtrado, la lista se atenúa apenas: da señal
+   de que el resultado se está actualizando sin bloquear la escritura. */
+.real-exec-table.is-filtering .real-exec-virtual-body {
+  opacity: 0.6;
+  transition: opacity 120ms ease;
+}
+
 .real-exec-client-row {
   width: 100%;
-  min-height: 61px;
+  min-height: calc(3.6em + 16px);
   padding: 8px 12px;
   border: 0;
   border-bottom: 1px solid var(--rx-line);
@@ -788,7 +1047,7 @@
 .real-exec-index {
   color: var(--rx-subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-size: var(--rx-fs-2xs);
 }
 
 .real-exec-client-identity {
@@ -799,15 +1058,15 @@
 }
 
 .real-exec-client-identity > span:first-child {
-  width: 33px;
-  height: 33px;
+  width: 2.3em;
+  height: 2.3em;
   display: grid;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 50%;
   background: var(--rx-brand-soft);
   color: var(--rx-brand-dark);
-  font-size: 11px;
+  font-size: var(--rx-fs-md);
   font-weight: 850;
 }
 
@@ -820,14 +1079,14 @@
 .real-exec-client-identity strong {
   overflow: hidden;
   color: var(--rx-ink);
-  font-size: 10px;
+  font-size: var(--rx-fs-md);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .real-exec-client-identity small {
   color: var(--rx-muted);
-  font-size: 8px;
+  font-size: var(--rx-fs-2xs);
 }
 
 .real-exec-assignee,
@@ -841,7 +1100,7 @@
 .real-exec-due {
   gap: 5px;
   color: var(--rx-muted);
-  font-size: 8px;
+  font-size: var(--rx-fs-2xs);
   font-weight: 700;
 }
 
@@ -863,8 +1122,8 @@
 }
 
 .real-exec-status-icon {
-  width: 28px;
-  height: 28px;
+  width: 2em;
+  height: 2em;
   display: grid;
   place-items: center;
   border: 1px solid var(--rx-line);
@@ -880,6 +1139,33 @@
 
 .real-exec-status-icon.is-inactive {
   background: var(--rx-soft);
+}
+
+/* Cuando el estado se puede cambiar desde la lista, se comporta como
+   botón: área táctil cómoda y respuesta al tocarlo. */
+.real-exec-status-icon.is-actionable {
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.real-exec-status-icon.is-actionable:hover:not(:disabled) {
+  border-color: var(--rx-brand);
+  color: var(--rx-brand);
+}
+
+.real-exec-status-icon.is-actionable:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.real-exec-status-icon.is-actionable:focus-visible {
+  outline: 2px solid var(--rx-brand);
+  outline-offset: 2px;
+}
+
+.real-exec-status-icon.is-busy {
+  cursor: progress;
+  opacity: 0.75;
 }
 
 .real-exec-chevron {
@@ -906,12 +1192,12 @@
 .real-exec-empty strong,
 .real-exec-centered strong {
   color: var(--rx-ink);
-  font-size: 12px;
+  font-size: var(--rx-fs-lg);
 }
 
 .real-exec-empty span,
 .real-exec-centered span {
-  font-size: 9px;
+  font-size: var(--rx-fs-sm);
 }
 
 .real-exec-centered {
@@ -930,7 +1216,7 @@
   background: var(--rx-brand);
   color: #ffffff;
   cursor: pointer;
-  font-size: 9px;
+  font-size: var(--rx-fs-sm);
   font-weight: 700;
 }
 
@@ -991,7 +1277,13 @@
 
   .real-exec-table-head,
   .real-exec-client-row {
-    grid-template-columns: 28px minmax(190px, 1.4fr) minmax(100px, 0.75fr) 70px 70px 13px;
+    grid-template-columns:
+      minmax(24px, auto)
+      minmax(150px, 1.5fr)
+      minmax(88px, 0.8fr)
+      minmax(58px, auto)
+      minmax(58px, auto)
+      13px;
   }
 }
 
@@ -1043,7 +1335,7 @@
   }
 
   .real-exec-hero h1 {
-    font-size: 39px;
+    font-size: calc(34px * var(--ui-font-scale, 1));
   }
 
   .real-exec-progress-card {
@@ -1072,7 +1364,7 @@
   }
 
   .real-exec-progress-ring strong {
-    font-size: 21px;
+    font-size: var(--rx-fs-3xl);
   }
 
   .real-exec-progress-card > small {

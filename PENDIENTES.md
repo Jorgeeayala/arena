@@ -62,6 +62,66 @@ Estado de referencia: autenticación individual y configuración inicial de PIN 
 3. La función reemplaza el hash, revoca las sesiones y elimina ambas propiedades temporales.
 4. Se establece un PIN nuevo; el PIN anterior no se recupera ni se muestra.
 
+## Migración a la nueva interfaz (UI ejecutiva)
+
+Estado: la UI ejecutiva es la que se monta en `src/main.jsx`
+(`uiMode="executive"`). La lista anterior (`ClientList`) ya no existe como
+archivo, así que lo que no se haya reimplementado en `ExecutiveDashboard`
+quedó fuera de la aplicación aunque su CSS siga en `styles.css`.
+
+### Migrado
+
+- [x] **Legibilidad del texto.** El tema ejecutivo fijaba tamaños de 7, 8, 9
+  y 10px en 39 reglas. Ahora hay una escala tipográfica con tokens
+  (`--rx-fs-*` en `preview.css`), con **12px como mínimo**, y todos los
+  contenedores que tenían alto/ancho fijo pasaron a medirse en `em` o
+  `minmax()` para que nada se corte al agrandar.
+- [x] **Tamaño de texto configurable.** Configuración → Preferencias →
+  *Tamaño de texto* (Compacto / Normal / Grande / Extra). Se guarda por
+  dispositivo (`src/uiPreferences.js`) y multiplica toda la escala vía
+  `--ui-font-scale`.
+- [x] **Zoom del sistema habilitado.** `index.html` ya no usa
+  `maximum-scale=1, user-scalable=no`, que impedía agrandar con el pellizco.
+- [x] **Rendimiento de la lista.** La tabla renderizaba todas las filas de
+  una vez (~3.600 nodos con 300 clientes). Ahora usa virtualización con
+  `@tanstack/react-virtual` —la dependencia ya estaba instalada y sin
+  usar—, la fila es un componente memoizado y el estado derivado de cada
+  fila se calcula una sola vez en un `Map` en lugar de recalcularse dentro
+  del `sort` y del render.
+- [x] **Búsqueda sin trabas.** El input tiene estado propio y la lista se
+  actualiza con `useDeferredValue`, así escribir no espera al filtrado.
+- [x] **Acciones rápidas en la lista.** Presentado y Archivado se marcan
+  desde la fila, con sello de usuario y reversión automática si el guardado
+  falla (equivalente al swipe de la versión anterior).
+- [x] **Filtros avanzados.** Vencimiento, estado y encargado volvieron en el
+  panel *Más filtros*; usan el contexto compartido, así que lo que se elige
+  también aplica en "Asignar clientes".
+- [x] **Resumen por vencimiento.** Panel con presentados/pendientes por día;
+  cada día filtra la cartera.
+- [x] **Botón de Marangatu.** `openMarangatuLogin()` y
+  `findClaveMarangatuColumn()` habían quedado como código muerto: ningún
+  componente los llamaba, pese a que el README lo listaba como función
+  vigente. Vuelve a estar en la cabecera del detalle del cliente.
+
+### Pendiente de esta migración
+
+- [ ] **Probar las acciones rápidas contra el backend real.** Se validaron
+  contra un mock local; falta confirmar el guardado y el sello de usuario
+  contra el Apps Script desplegado.
+- [ ] **Definir qué pasa con el orden manual (`sortBy`).** El contexto sigue
+  exponiendo `sortBy`/`setSortBy` y nadie los usa: la lista ordena por
+  vencimiento y después por nombre. Hay que decidir si se expone un
+  selector de orden o si se quita del contexto.
+- [ ] **Limpiar el CSS huérfano de la interfaz anterior.** Quedan ~57 clases
+  en `styles.css` sin ningún uso en JSX (`client-card*`, `swipe-*`,
+  `summary-*`, `filters-sheet-*`, `status-badge-*`, `toggle-switch-*`,
+  entre otras). Conviene borrarlas recién cuando la nueva UI esté aprobada
+  en producción, para no perder referencias durante la transición.
+- [ ] **Revisar el resto de pantallas con la escala nueva.** `ClientDetail`,
+  `AssignClients` y los pickers siguen con tamaños en px propios de
+  `styles.css`; se ven bien, pero todavía no acompañan la preferencia de
+  *Tamaño de texto*.
+
 ## Funciones pendientes fuera de autenticación
 
 - [ ] Implementar `action: "create"` en el backend antes de habilitar definitivamente el alta de nuevos clientes.

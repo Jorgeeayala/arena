@@ -15,6 +15,11 @@ import ScreenErrorBoundary from './components/ScreenErrorBoundary';
 import SettingsDialog from './components/SettingsDialog';
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
+import {
+  FONT_SCALE_OPTIONS,
+  persistFontScale,
+  readStoredFontScale,
+} from './uiPreferences';
 import { formatPeriodLabel } from './utils';
 import { api } from './api';
 import { Calendar, User, Menu, X, UserCog, RefreshCw, Settings } from 'lucide-react';
@@ -311,6 +316,17 @@ export default function App({
     if (saved) return saved;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+
+  // Tamaño de texto elegido en Configuración. Se guarda por dispositivo:
+  // la misma cuenta puede querer texto grande en el teléfono y normal en
+  // la PC. El valor se aplica en <html> y toda la escala tipográfica del
+  // tema ejecutivo se multiplica por él (ver --ui-font-scale en styles.css).
+  const [fontScale, setFontScale] = useState(readStoredFontScale);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-font-scale', fontScale);
+    persistFontScale(fontScale);
+  }, [fontScale]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -825,6 +841,8 @@ export default function App({
         open={settingsOpen}
         user={user}
         theme={theme}
+        fontScale={fontScale}
+        fontScaleOptions={FONT_SCALE_OPTIONS}
         error={pinChangeError}
         submitting={pinChangeSubmitting}
         onClose={() => {
@@ -832,6 +850,7 @@ export default function App({
         }}
         onChangePin={handleChangePin}
         onThemeChange={setTheme}
+        onFontScaleChange={setFontScale}
       />
     </div>
   );
@@ -981,7 +1000,8 @@ function PeriodScreens({
     return (
       <motion.div key={`executive-overview-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
         <PeriodOverviewComponent ref={periodOverviewRef}
-          onSelect={onSelectClient} onNewClient={onNewClient} />
+          onSelect={onSelectClient} onNewClient={onNewClient}
+          readOnly={readOnlyPreview} />
       </motion.div>
     );
   };
