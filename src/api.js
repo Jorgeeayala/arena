@@ -168,44 +168,127 @@ function withPendingWrites(data, year, sheet) {
   return { ...data, rows };
 }
 
+// Cuánto se espera una respuesta antes de darla por perdida. Sin esto, una
+// petición que Apps Script acepta pero nunca contesta deja la app colgada:
+// el login se quedaba en "Verificando…" para siempre.
+const REQUEST_TIMEOUT_MS = 20000;
+
+// Códigos HTTP que conviene reintentar: son fallos transitorios del lado de
+// Google (sobrecarga, despliegue despertando, límite de cuota), no errores
+// de la petición en sí.
+const RETRYABLE_HTTP_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+// Error de transporte: la petición no llegó a completarse o la respuesta no
+// es utilizable. Se distingue de ApiError, que es una respuesta válida del
+// backend diciendo que algo salió mal (PIN incorrecto, token inválido...).
+class TransportError extends Error {
+  constructor(message, { status = 0, retryable = false } = {}) {
+    super(message);
+    this.name = 'TransportError';
+    this.code = 'TRANSPORT_ERROR';
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
+
+function isNetworkFailure(error) {
+  return (
+    error.name === 'TypeError' ||
+    !error.message ||
+    error.message.includes('Failed to fetch') ||
+    error.message.includes('NetworkError') ||
+    error.message.includes('Load failed')
+  );
+}
+
+// Una sola petición, con timeout propio. AbortController (en vez de
+// AbortSignal.timeout) para que funcione también en la WebView de Android.
+async function fetchOnce(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const rawText = await response.text();
+
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      // Apps Script contestó algo que no es JSON: casi siempre una página de
+      // error o la pantalla de login de Google. Es transitorio si el HTTP lo
+      // es; si no, se informa para poder distinguir el caso permanente
+      // (despliegue inexistente, o "Quién tiene acceso" mal configurado).
+      throw new TransportError(
+        `El servidor respondió algo que no es JSON (HTTP ${response.status}).`,
+        { status: response.status, retryable: true }
+      );
+    }
+
+    // Respuesta JSON pero con HTTP de error: se respeta el criterio de arriba.
+    if (!response.ok && RETRYABLE_HTTP_STATUS.has(response.status)) {
+      throw new TransportError(
+        `El servidor respondió con un error temporal (HTTP ${response.status}).`,
+        { status: response.status, retryable: true }
+      );
+    }
+
+    // A partir de acá la respuesta es del backend, no del transporte:
+    // ok:false es una decisión suya (PIN incorrecto, sin permiso...) y NO
+    // se reintenta. Reintentarla quemaría intentos del bloqueo por PIN.
+    if (!data.ok) {
+      throw new ApiError(data.error || 'Error desconocido del servidor', data);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new TransportError(
+        `El servidor no respondió en ${Math.round(REQUEST_TIMEOUT_MS / 1000)} segundos.`,
+        { retryable: true }
+      );
+    }
+    if (isNetworkFailure(error)) {
+      throw new TransportError('No se pudo conectar con el servidor.', {
+        retryable: true,
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchWithRetry(url, options = {}, retries = 3, delay = 400) {
   let lastError;
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(url, options);
-      const rawText = await response.text();
-
-      let data;
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        const preview = rawText.slice(0, 300).replace(/\s+/g, ' ').trim();
-        throw new Error(
-          `Respuesta no es JSON válido (HTTP ${response.status}) desde ${url}. ` +
-          `Primeros caracteres de la respuesta: "${preview}"`
-        );
-      }
-
-      if (!data.ok) {
-        throw new ApiError(data.error || 'Error desconocido del servidor', data);
-      }
-      return data;
+      return await fetchOnce(url, options);
     } catch (error) {
       lastError = error;
-      const isNetworkError =
-        error.name === 'TypeError' ||
-        !error.message ||
-        error.message.includes('Failed to fetch') ||
-        error.message.includes('NetworkError') ||
-        error.message.includes('Load failed');
 
-      if (isNetworkError && attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, delay * attempt));
-        continue;
-      }
-      throw error;
+      // Sólo se reintenta lo transitorio. Un ApiError (respuesta válida del
+      // backend) sale de inmediato.
+      if (!error.retryable || attempt === retries) break;
+
+      // Espera creciente con una pizca de aleatoriedad, para no golpear
+      // Apps Script con reintentos sincronizados.
+      const wait = delay * 2 ** (attempt - 1) + Math.random() * 200;
+      await new Promise((resolve) => setTimeout(resolve, wait));
     }
   }
+
+  // Se agotaron los intentos: mensaje accionable y sin exponer la URL del
+  // despliegue, que antes se imprimía entera en pantalla.
+  if (lastError instanceof TransportError) {
+    throw new TransportError(
+      `${lastError.message} Se reintentó ${retries} veces. ` +
+      'Revisá tu conexión; si persiste, puede ser el despliegue de Apps Script.',
+      { status: lastError.status, retryable: false }
+    );
+  }
+
   throw lastError;
 }
 
