@@ -7,10 +7,13 @@ import {
   findUserStampColumn,
   findPresentadoColumn,
   findArchivadoColumn,
+  findRucColumn,
+  findClaveMarangatuColumn,
   getFieldType,
   getDisplayHeader,
   formatPeriodLabel,
 } from '../utils';
+import { openMarangatuLogin } from '../marangatu';
 import {
   ArrowLeft,
   Check,
@@ -92,6 +95,23 @@ export default function ClientDetail({
 
   const presUser = presentadoPorCol && values[presentadoPorCol] ? String(values[presentadoPorCol]) : null;
   const archUser = archivadoPorCol && values[archivadoPorCol] ? String(values[archivadoPorCol]) : null;
+
+  // Credenciales de Marangatu de esta fila. Sólo se ofrece el botón cuando
+  // la planilla tiene ambas columnas y la fila tiene los dos valores: sin
+  // clave no hay nada que autocompletar. En el preview de sólo lectura no
+  // se expone.
+  const marangatuCredentials = useMemo(() => {
+    if (readOnlyPreview) return null;
+    const rucColumn = findRucColumn(fields);
+    const claveColumn = findClaveMarangatuColumn(fields);
+    if (!rucColumn || !claveColumn) return null;
+
+    const ruc = String(values[rucColumn] ?? '').trim();
+    const clave = String(values[claveColumn] ?? '').trim();
+    if (!ruc || !clave) return null;
+
+    return { user: ruc, pass: clave };
+  }, [fields, values, readOnlyPreview]);
 
   async function saveField(column, newValue) {
     if (readOnlyPreview) return;
@@ -199,6 +219,22 @@ export default function ClientDetail({
             <h2 className="client-detail-title">{clientName}</h2>
             <div className="client-detail-meta" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
               <span>Fila #{client._row} • {formatPeriodLabel(month, year)}</span>
+
+              {/* Acceso a Marangatu: abre el login de la SET y, si la
+                  extensión está instalada, lo autocompleta con el RUC y la
+                  clave de esta fila. Las credenciales viajan sólo por el
+                  canal de la extensión (nunca por la URL). */}
+              {marangatuCredentials && (
+                <button
+                  type="button"
+                  className="marangatu-btn"
+                  title={`Abrir Marangatu con el RUC ${marangatuCredentials.user}`}
+                  aria-label="Abrir Marangatu con las credenciales de este cliente"
+                  onClick={() => openMarangatuLogin(marangatuCredentials)}
+                >
+                  <img className="marangatu-logo" src="/marangatu.svg" alt="" aria-hidden="true" />
+                </button>
+              )}
 
               {(presUser || archUser) && (
                 <div className="stamps-row" style={{ marginTop: '2px' }}>

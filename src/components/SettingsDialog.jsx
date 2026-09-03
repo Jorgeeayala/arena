@@ -8,6 +8,7 @@ import {
   Moon,
   ShieldCheck,
   Sun,
+  Type,
   X,
 } from 'lucide-react';
 
@@ -19,11 +20,14 @@ export default function SettingsDialog({
   open,
   user,
   theme,
+  fontScale = 'normal',
+  fontScaleOptions = [],
   error,
   submitting,
   onClose,
   onChangePin,
   onThemeChange,
+  onFontScaleChange,
 }) {
   const [view, setView] = useState('main');
   const [currentPin, setCurrentPin] = useState('');
@@ -142,6 +146,42 @@ export default function SettingsDialog({
                   Oscuro
                 </button>
               </div>
+
+              {fontScaleOptions.length > 0 && (
+                <div className="settings-subsection">
+                  <div className="settings-subsection-header">
+                    <span className="settings-subsection-title">
+                      <Type size={15} />
+                      Tamaño de texto
+                    </span>
+                    <span className="settings-font-preview" data-scale={fontScale}>
+                      Aa
+                    </span>
+                  </div>
+                  <div
+                    className="settings-font-options"
+                    role="group"
+                    aria-label="Tamaño de texto de la aplicación"
+                  >
+                    {fontScaleOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`settings-font-option ${
+                          fontScale === option.id ? 'is-active' : ''
+                        }`}
+                        aria-pressed={fontScale === option.id}
+                        onClick={() => onFontScaleChange?.(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="settings-note">
+                    Se aplica al instante y queda guardado en este dispositivo.
+                  </p>
+                </div>
+              )}
             </section>
 
             <section className="settings-section">

@@ -1,4 +1,15 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useDeferredValue,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertCircle,
   Archive,
@@ -10,9 +21,11 @@ import {
   ClipboardCheck,
   Clock3,
   Filter,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   UserRound,
   Users,
   X,
@@ -41,17 +54,193 @@ function getDueNumber(row, dueColumn) {
   return match ? Number.parseInt(match[0], 10) : Number.POSITIVE_INFINITY;
 }
 
-function StatusIcon({ type, active }) {
+// Estado de la fila. Cuando se puede editar es un botón que alterna el
+// valor en el acto (migrado de la lista anterior, donde se marcaba
+// Presentado/Archivado con un gesto sin entrar al detalle); cuando no,
+// queda como indicador de sólo lectura.
+function StatusIcon({ type, active, onToggle, disabled, busy }) {
   const archived = type === 'archived';
-  const label = archived
+  const stateLabel = archived
     ? (active ? 'Archivado' : 'Sin archivar')
     : (active ? 'Presentado' : 'Pendiente');
+  const icon = archived ? <Archive size={15} /> : <ClipboardCheck size={15} />;
+  const className = `real-exec-status-icon ${active ? 'is-active' : 'is-inactive'}`;
+
+  if (!onToggle) {
+    return (
+      <span className={className} role="img" aria-label={stateLabel} title={stateLabel}>
+        {icon}
+      </span>
+    );
+  }
+
+  const actionLabel = archived
+    ? (active ? 'Quitar de archivados' : 'Marcar como archivado')
+    : (active ? 'Marcar como pendiente' : 'Marcar como presentado');
 
   return (
-    <span className={`real-exec-status-icon ${active ? 'is-active' : 'is-inactive'}`}
-      role="img" aria-label={label} title={label}>
-      {archived ? <Archive size={15}/> : <ClipboardCheck size={15}/>}
-    </span>
+    <button
+      type="button"
+      className={`${className} is-actionable ${busy ? 'is-busy' : ''}`}
+      aria-label={`${stateLabel}. ${actionLabel}`}
+      aria-pressed={active}
+      title={actionLabel}
+      disabled={disabled || busy}
+      onClick={(event) => {
+        // La fila entera es un botón que abre el detalle: sin esto, tocar
+        // el estado abriría el cliente además de cambiar el valor.
+        event.stopPropagation();
+        onToggle();
+      }}
+    >
+      {busy ? <Loader2 size={15} className="real-exec-spin" /> : icon}
+    </button>
+  );
+}
+
+// Fila de la tabla. Va en su propio componente memoizado porque la lista
+// puede tener cientos de clientes: si la fila se recalculara con cada
+// tecleo del buscador o cada cambio de filtro, el navegador se quedaba
+// masticando cientos de re-renders en vez de mostrar la letra escrita.
+// Con memo() sólo se vuelven a dibujar las filas cuyos datos cambiaron.
+const ClientRow = memo(function ClientRow({
+  row,
+  index,
+  nameKey,
+  rucKey,
+  presented,
+  archived,
+  due,
+  onSelect,
+  onTogglePresented,
+  onToggleArchived,
+  saving,
+}) {
+  const clientName = row[nameKey] || 'Sin nombre';
+  const assignee = String(row._assignedUser || '').trim();
+
+  return (
+    <button type="button" className="real-exec-client-row" onClick={() => onSelect(row)}>
+      <span className="real-exec-index">{String(index + 1).padStart(2, '0')}</span>
+      <span className="real-exec-client-identity">
+        <span>{String(clientName).charAt(0).toUpperCase()}</span>
+        <span>
+          <strong>{clientName}</strong>
+          <small>{rucKey && row[rucKey] ? `RUC ${row[rucKey]}` : `Fila ${row._row}`}</small>
+        </span>
+      </span>
+      <span className={`real-exec-assignee ${assignee ? '' : 'is-empty'}`}>
+        <UserRound size={13} /> {assignee || 'Sin asignar'}
+      </span>
+      <span className="real-exec-due">
+        <CalendarDays size={13} />
+        {Number.isFinite(due) ? `Día ${due}` : '—'}
+      </span>
+      <span className="real-exec-statuses">
+        <StatusIcon
+          type="presented"
+          active={presented}
+          busy={saving}
+          onToggle={onTogglePresented ? () => onTogglePresented(row, presented) : undefined}
+        />
+        <StatusIcon
+          type="archived"
+          active={archived}
+          busy={saving}
+          onToggle={onToggleArchived ? () => onToggleArchived(row, archived) : undefined}
+        />
+      </span>
+      <ChevronRight className="real-exec-chevron" size={16} />
+    </button>
+  );
+});
+
+// Tabla virtualizada: sólo se montan en el DOM las filas visibles (más un
+// pequeño colchón), no las cientos que tenga el período. Antes, 300
+// clientes significaban ~3.600 nodos creados de una sola vez en cada
+// filtrado; ahora son ~20 filas montadas y el resto es alto reservado.
+//
+// Usa el scroll de la ventana (useWindowVirtualizer) en vez de un
+// contenedor con scroll propio: así la página sigue comportándose como
+// una sola columna que baja, igual que antes, y no aparece el "scroll
+// dentro del scroll" que molesta en el teléfono.
+function VirtualClientRows({
+  rows,
+  nameKey,
+  rucKey,
+  rowMeta,
+  onSelect,
+  onTogglePresented,
+  onToggleArchived,
+  savingRows,
+}) {
+  const listRef = useRef(null);
+  const [offset, setOffset] = useState(0);
+
+  // Distancia entre el inicio del documento y el inicio de la lista: el
+  // virtualizador de ventana la necesita para saber qué filas caen dentro
+  // de la pantalla. Se recalcula si cambia el layout (filtros, resize).
+  useLayoutEffect(() => {
+    const element = listRef.current;
+    if (!element) return undefined;
+
+    const measure = () => {
+      const top = element.getBoundingClientRect().top + window.scrollY;
+      setOffset((previous) => (Math.abs(previous - top) > 1 ? top : previous));
+    };
+
+    measure();
+    window.addEventListener('resize', measure);
+
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (observer) observer.observe(document.body);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      observer?.disconnect();
+    };
+  }, [rows.length]);
+
+  const virtualizer = useWindowVirtualizer({
+    count: rows.length,
+    estimateSize: () => 62,
+    overscan: 8,
+    scrollMargin: offset,
+  });
+
+  const items = virtualizer.getVirtualItems();
+
+  return (
+    <div ref={listRef} className="real-exec-virtual-body" style={{ height: virtualizer.getTotalSize() }}>
+      {items.map((item) => {
+        const row = rows[item.index];
+        const meta = rowMeta.get(row._row);
+        return (
+          <div
+            key={row._row}
+            data-index={item.index}
+            ref={virtualizer.measureElement}
+            className="real-exec-virtual-row"
+            style={{ transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}
+          >
+            <ClientRow
+              row={row}
+              index={item.index}
+              nameKey={nameKey}
+              rucKey={rucKey}
+              presented={meta?.presented ?? false}
+              archived={meta?.archived ?? false}
+              due={meta?.due ?? Number.POSITIVE_INFINITY}
+              onSelect={onSelect}
+              onTogglePresented={onTogglePresented}
+              onToggleArchived={onToggleArchived}
+              saving={savingRows.includes(row._row)}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -64,7 +253,10 @@ function Metric({ icon: Icon, value, label, tone }) {
   );
 }
 
-const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, onNewClient }, ref) {
+const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
+  { onSelect, onNewClient, readOnly = false },
+  ref
+) {
   const {
     user,
     year,
@@ -75,34 +267,150 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, on
     error,
     reload,
     syncTeamUsers,
+    teamUsers,
     nameKey,
     rucKey,
     vencimientoKey,
-    encargadoCol,
+    presentadoCol,
+    presentadoPorCol,
     archivadoCol,
     archivadoPorCol,
+    availableVencimientos,
     query,
     setQuery,
+    selectedVencimiento,
+    setSelectedVencimiento,
+    selectedStatus,
+    setSelectedStatus,
+    selectedAssignee,
+    setSelectedAssignee,
+    activeFilterCount,
+    hasActiveFilters,
+    clearFilters,
     applySharedFilters,
     isRowPresentado,
+    savingRows,
+    saveRowUpdates,
   } = useClients();
+
+  const [actionError, setActionError] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [quickFilter, setQuickFilter] = useState('all');
   const clientSectionRef = useRef(null);
+
+  // El input de búsqueda escribe en su propio estado y recién después
+  // actualiza el filtro compartido. Antes cada tecla disparaba, de forma
+  // síncrona, el filtrado + ordenamiento de toda la planilla y el
+  // re-render de la lista entera: se escribía y las letras aparecían con
+  // retraso. Ahora el texto se pinta al instante y el trabajo pesado va
+  // por detrás, en una actualización de baja prioridad.
+  const [typedSearch, setTypedSearch] = useState(query);
+  const [lastSyncedQuery, setLastSyncedQuery] = useState(query);
+
+  // Si el filtro se limpia o cambia desde afuera (cambio de período,
+  // "limpiar filtros"), el input acompaña ese cambio. Se ajusta durante el
+  // render -- el patrón recomendado por React para estado derivado -- en
+  // vez de con un efecto, que provocaría un render extra en cascada.
+  let searchText = typedSearch;
+  if (query !== lastSyncedQuery) {
+    searchText = query;
+    setLastSyncedQuery(query);
+    setTypedSearch(query);
+  }
+
+  const handleSearchChange = useCallback(
+    (value) => {
+      setTypedSearch(value);
+      setLastSyncedQuery(value);
+      setQuery(value);
+    },
+    [setQuery]
+  );
+
+  const clearSearch = useCallback(() => {
+    setTypedSearch('');
+    setLastSyncedQuery('');
+    setQuery('');
+  }, [setQuery]);
 
   const refresh = useCallback(
     () => Promise.allSettled([reload(true), syncTeamUsers(true)]),
     [reload, syncTeamUsers]
   );
 
+  // Acción rápida sobre la fila: marcar Presentado / Archivado sin abrir
+  // el cliente. Escribe también la columna del sello ("Presentado por:",
+  // "Archivado por:") con el mismo criterio que el detalle, para que la
+  // planilla quede igual sin importar desde dónde se marcó.
+  const toggleStatus = useCallback(
+    async (row, column, stampColumn, isActive) => {
+      if (readOnly || !column) return;
+
+      const nextValue = isActive ? 'NO' : 'SI';
+      const updates = { [column]: nextValue };
+      if (stampColumn && stampColumn !== column) {
+        updates[stampColumn] = isActive ? '' : user;
+      }
+
+      setActionError('');
+      try {
+        await saveRowUpdates(row._row, updates);
+      } catch (saveError) {
+        setActionError(
+          saveError?.message || 'No se pudo guardar el cambio. Probá de nuevo.'
+        );
+      }
+    },
+    [readOnly, saveRowUpdates, user]
+  );
+
+  const handleTogglePresented = useCallback(
+    (row, isActive) => toggleStatus(row, presentadoCol, presentadoPorCol, isActive),
+    [toggleStatus, presentadoCol, presentadoPorCol]
+  );
+
+  const handleToggleArchived = useCallback(
+    (row, isActive) => toggleStatus(row, archivadoCol, archivadoPorCol, isActive),
+    [toggleStatus, archivadoCol, archivadoPorCol]
+  );
+
+  // Sólo se ofrece la acción rápida si la planilla realmente tiene esa
+  // columna: si no existe, el estado se muestra como indicador y listo.
+  const canEditStatus = !readOnly && Boolean(presentadoCol);
+  const canEditArchived = !readOnly && Boolean(archivadoCol);
+
   useImperativeHandle(ref, () => ({ refresh }), [refresh]);
+
+  // Estado derivado de cada fila (presentado, archivado, día de
+  // vencimiento, encargado), calculado UNA sola vez por fila.
+  //
+  // Antes, esos mismos valores se recalculaban muchísimas veces: una vez
+  // por fila para las métricas, otra para las prioridades, otra por cada
+  // comparación del sort (donde `getDueNumber` corría una expresión
+  // regular O(n log n) veces) y otra más por cada fila dibujada. Con la
+  // planilla llena eso era el grueso del trabajo en cada tecla del
+  // buscador. Ahora se resuelve en una pasada y todo lo demás lee el Map.
+  const rowMeta = useMemo(() => {
+    const meta = new Map();
+    assignedRows.forEach((row) => {
+      meta.set(row._row, {
+        presented: isRowPresentado(row),
+        archived: isArchived(row, archivadoCol, archivadoPorCol),
+        due: getDueNumber(row, vencimientoKey),
+        assignee: String(row._assignedUser || '').trim(),
+      });
+    });
+    return meta;
+  }, [assignedRows, archivadoCol, archivadoPorCol, isRowPresentado, vencimientoKey]);
 
   const metrics = useMemo(() => {
     let presented = 0;
     let archived = 0;
     assignedRows.forEach((row) => {
-      if (isRowPresentado(row)) presented += 1;
-      if (isArchived(row, archivadoCol, archivadoPorCol)) archived += 1;
+      const meta = rowMeta.get(row._row);
+      if (meta?.presented) presented += 1;
+      if (meta?.archived) archived += 1;
     });
     return {
       total: assignedRows.length,
@@ -110,7 +418,7 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, on
       pending: assignedRows.length - presented,
       archived,
     };
-  }, [assignedRows, archivadoCol, archivadoPorCol, isRowPresentado]);
+  }, [assignedRows, rowMeta]);
 
   const completion = metrics.total
     ? Math.round((metrics.presented / metrics.total) * 100)
@@ -119,51 +427,84 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, on
   const priorityRows = useMemo(
     () =>
       assignedRows
-        .filter((row) => !isRowPresentado(row))
-        .sort((left, right) => getDueNumber(left, vencimientoKey) - getDueNumber(right, vencimientoKey))
+        .filter((row) => !rowMeta.get(row._row)?.presented)
+        .sort(
+          (left, right) =>
+            (rowMeta.get(left._row)?.due ?? Infinity) -
+            (rowMeta.get(right._row)?.due ?? Infinity)
+        )
         .slice(0, 3),
-    [assignedRows, isRowPresentado, vencimientoKey]
+    [assignedRows, rowMeta]
   );
+
+  // Resumen por día de vencimiento (existía en la versión anterior). Deja
+  // ver, de un vistazo, cuántos clientes vencen cada día y cuántos de esos
+  // ya están presentados: es la lectura que usa el estudio para saber
+  // dónde se está por atrasar.
+  const dailySummary = useMemo(() => {
+    if (!vencimientoKey) return [];
+    const totals = new Map();
+
+    assignedRows.forEach((row) => {
+      const meta = rowMeta.get(row._row);
+      const due = meta?.due;
+      const key = Number.isFinite(due) ? due : null;
+      const current = totals.get(key) || { due: key, total: 0, presented: 0 };
+      current.total += 1;
+      if (meta?.presented) current.presented += 1;
+      totals.set(key, current);
+    });
+
+    return [...totals.values()].sort((left, right) => {
+      if (left.due === null) return 1;
+      if (right.due === null) return -1;
+      return left.due - right.due;
+    });
+  }, [assignedRows, rowMeta, vencimientoKey]);
 
   const workload = useMemo(() => {
     const totals = new Map();
     assignedRows.forEach((row) => {
-      const assignee = String(row._assignedUser || '').trim() || 'Sin asignar';
+      const assignee = rowMeta.get(row._row)?.assignee || 'Sin asignar';
       totals.set(assignee, (totals.get(assignee) || 0) + 1);
     });
     return [...totals.entries()]
       .sort((left, right) => right[1] - left[1])
       .slice(0, 5);
-  }, [assignedRows]);
+  }, [assignedRows, rowMeta]);
+
+  // Un solo Collator para todo el ordenamiento. Pasarle las opciones a
+  // localeCompare dentro del comparador construía uno nuevo en cada
+  // comparación, que es de lo más caro que puede hacer un sort largo.
+  const collator = useMemo(
+    () => new Intl.Collator('es', { numeric: true, sensitivity: 'base' }),
+    []
+  );
 
   const filteredRows = useMemo(() => {
     const rows = applySharedFilters(assignedRows).filter((row) => {
-      const assignee = encargadoCol ? String(row[encargadoCol] || '').trim() : '';
+      const meta = rowMeta.get(row._row);
+      const assignee = meta?.assignee ?? '';
       if (quickFilter === 'mine') return assignee === user;
-      if (quickFilter === 'pending') return !isRowPresentado(row);
-      if (quickFilter === 'early') return getDueNumber(row, vencimientoKey) <= 15;
+      if (quickFilter === 'pending') return !meta?.presented;
+      if (quickFilter === 'early') return (meta?.due ?? Infinity) <= 15;
       if (quickFilter === 'unassigned') return !assignee;
       return true;
     });
 
     return rows.sort((left, right) => {
-      const dueDifference = getDueNumber(left, vencimientoKey) - getDueNumber(right, vencimientoKey);
+      const dueDifference =
+        (rowMeta.get(left._row)?.due ?? Infinity) - (rowMeta.get(right._row)?.due ?? Infinity);
       if (dueDifference !== 0) return dueDifference;
-      return String(left[nameKey] || '').localeCompare(String(right[nameKey] || ''), 'es', {
-        numeric: true,
-        sensitivity: 'base',
-      });
+      return collator.compare(String(left[nameKey] || ''), String(right[nameKey] || ''));
     });
-  }, [
-    applySharedFilters,
-    assignedRows,
-    encargadoCol,
-    isRowPresentado,
-    nameKey,
-    quickFilter,
-    user,
-    vencimientoKey,
-  ]);
+  }, [applySharedFilters, assignedRows, collator, nameKey, quickFilter, rowMeta, user]);
+
+  // La lista se dibuja con el resultado "diferido": mientras se tipea, React
+  // prioriza pintar el texto del input y actualiza la tabla enseguida
+  // después, sin bloquear la escritura.
+  const deferredRows = useDeferredValue(filteredRows);
+  const isFiltering = deferredRows !== filteredRows;
 
   const showPendingClients = () => {
     setQuickFilter('pending');
@@ -259,6 +600,69 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, on
         </article>
       </section>
 
+      {/* Resumen por día de vencimiento. Cada fila filtra la cartera por
+          ese día, para pasar del panorama al detalle en un toque. */}
+      {dailySummary.length > 0 && (
+        <section className="real-exec-summary">
+          <div className="real-exec-section-heading">
+            <div>
+              <span>CALENDARIO</span>
+              <h2>Resumen por vencimiento</h2>
+            </div>
+            <small>{dailySummary.length}</small>
+          </div>
+
+          <div className="real-exec-summary-grid">
+            {dailySummary.map((entry) => {
+              const key = entry.due === null ? 'sin-fecha' : String(entry.due);
+              const pending = entry.total - entry.presented;
+              const ratio = entry.total ? (entry.presented / entry.total) * 100 : 0;
+              const isSelected = selectedVencimiento === key;
+
+              return (
+                <button
+                  type="button"
+                  key={key}
+                  className={`real-exec-summary-cell ${isSelected ? 'is-active' : ''} ${
+                    pending === 0 ? 'is-done' : ''
+                  }`}
+                  aria-pressed={isSelected}
+                  title={
+                    entry.due === null
+                      ? 'Clientes sin fecha de vencimiento'
+                      : `Día ${entry.due}: ${entry.presented} de ${entry.total} presentados`
+                  }
+                  onClick={() => {
+                    // Un segundo toque sobre el mismo día vuelve a "todos".
+                    setSelectedVencimiento(isSelected ? 'todos' : key);
+                    setQuickFilter('all');
+                    window.requestAnimationFrame(() => {
+                      clientSectionRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      });
+                    });
+                  }}
+                >
+                  <span className="real-exec-summary-day">
+                    {entry.due === null ? 'Sin fecha' : `Día ${entry.due}`}
+                  </span>
+                  <span className="real-exec-summary-count">
+                    <strong>{entry.presented}</strong>/{entry.total}
+                  </span>
+                  <span className="real-exec-summary-bar">
+                    <i style={{ width: `${ratio}%` }} />
+                  </span>
+                  <span className="real-exec-summary-pending">
+                    {pending === 0 ? 'Completo' : `${pending} pend.`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section className="real-exec-clients" ref={clientSectionRef}>
         <div className="real-exec-section-heading real-exec-clients-heading">
           <div>
@@ -267,13 +671,13 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, on
             <p>Consulta de estados, responsables y vencimientos.</p>
           </div>
           <div className="real-exec-clients-actions">
-            {onNewClient && headers && headers.length ? (
+            {!readOnly && onNewClient && headers && headers.length ? (
               <button type="button" className="real-exec-new-client-btn"
                 onClick={() => onNewClient(headers)} title="Cargar un cliente nuevo">
                 <Plus size={15} /><span>Nuevo cliente</span>
               </button>
             ) : null}
-            <small><strong>{filteredRows.length}</strong> de {metrics.total}</small>
+            <small><strong>{deferredRows.length}</strong> de {metrics.total}</small>
           </div>
         </div>
 
@@ -282,11 +686,15 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, on
             <Search size={17} />
             <input
               type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={searchText}
+              onChange={(event) => handleSearchChange(event.target.value)}
               placeholder="Buscar cliente o RUC…"
             />
-            {query && <button type="button" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={14} /></button>}
+            {searchText && (
+              <button type="button" onClick={clearSearch} aria-label="Limpiar búsqueda">
+                <X size={14} />
+              </button>
+            )}
           </label>
           <div className="real-exec-filters">
             <Filter size={14} />
@@ -300,37 +708,139 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard({ onSelect, on
                 {filter.label}
               </button>
             ))}
+            <button
+              type="button"
+              className={`real-exec-more-filters ${advancedOpen ? 'is-active' : ''}`}
+              aria-expanded={advancedOpen}
+              onClick={() => setAdvancedOpen((open) => !open)}
+            >
+              <SlidersHorizontal size={13} />
+              <span>Más filtros</span>
+              {activeFilterCount > 0 && <em>{activeFilterCount}</em>}
+            </button>
           </div>
         </div>
 
-        {filteredRows.length ? (
-          <div className="real-exec-table">
+        {/* Filtros detallados (vencimiento, estado y encargado). Existían en
+            la versión anterior y viven en el contexto compartido, así que lo
+            que se elige acá también aplica en "Asignar clientes". */}
+        {advancedOpen && (
+          <div className="real-exec-advanced-filters">
+            {availableVencimientos.length > 0 && (
+              <div className="real-exec-filter-group">
+                <span className="real-exec-filter-label">Vencimiento</span>
+                <div className="real-exec-filter-chips">
+                  <button
+                    type="button"
+                    className={selectedVencimiento === 'todos' ? 'is-active' : ''}
+                    onClick={() => setSelectedVencimiento('todos')}
+                  >
+                    Todos
+                  </button>
+                  {availableVencimientos.map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      className={selectedVencimiento === day ? 'is-active' : ''}
+                      onClick={() => setSelectedVencimiento(day)}
+                    >
+                      {/^\d+$/.test(day) ? `Día ${day}` : day}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="real-exec-filter-group">
+              <span className="real-exec-filter-label">Estado</span>
+              <div className="real-exec-filter-chips">
+                {[
+                  { id: 'todos', label: 'Todos' },
+                  { id: 'presentado', label: 'Presentados' },
+                  { id: 'pendiente', label: 'Pendientes' },
+                ].map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={selectedStatus === option.id ? 'is-active' : ''}
+                    onClick={() => setSelectedStatus(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="real-exec-filter-group">
+              <span className="real-exec-filter-label">Encargado</span>
+              <div className="real-exec-filter-chips">
+                {[
+                  { id: 'todos', label: 'Todos' },
+                  { id: 'mis', label: 'Mis clientes' },
+                  { id: 'sin_asignar', label: 'Sin asignar' },
+                ].map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={selectedAssignee === option.id ? 'is-active' : ''}
+                    onClick={() => setSelectedAssignee(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+                {teamUsers.map((member) => (
+                  <button
+                    key={member}
+                    type="button"
+                    className={selectedAssignee === member ? 'is-active' : ''}
+                    onClick={() => setSelectedAssignee(member)}
+                  >
+                    {member}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                className="real-exec-clear-filters"
+                onClick={() => {
+                  clearFilters();
+                  setQuickFilter('all');
+                }}
+              >
+                <X size={13} /> Limpiar filtros
+              </button>
+            )}
+          </div>
+        )}
+
+        {actionError && (
+          <div className="real-exec-action-error" role="alert">
+            <AlertCircle size={15} />
+            <span>{actionError}</span>
+            <button type="button" onClick={() => setActionError('')} aria-label="Cerrar aviso">
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {deferredRows.length ? (
+          <div className={`real-exec-table ${isFiltering ? 'is-filtering' : ''}`}>
             <div className="real-exec-table-head">
               <span>N.º</span><span>Cliente</span><span>Encargado</span><span>Vence</span><span>Estados</span><span />
             </div>
-            {filteredRows.map((row, index) => {
-              const clientName = row[nameKey] || 'Sin nombre';
-              const assignee = String(row._assignedUser || '').trim();
-              const due = getDueNumber(row, vencimientoKey);
-              return (
-                <button type="button" className="real-exec-client-row" key={row._row} onClick={() => onSelect(row)}>
-                  <span className="real-exec-index">{String(index + 1).padStart(2, '0')}</span>
-                  <span className="real-exec-client-identity">
-                    <span>{String(clientName).charAt(0).toUpperCase()}</span>
-                    <span><strong>{clientName}</strong><small>{rucKey && row[rucKey] ? `RUC ${row[rucKey]}` : `Fila ${row._row}`}</small></span>
-                  </span>
-                  <span className={`real-exec-assignee ${assignee ? '' : 'is-empty'}`}>
-                    <UserRound size={13} /> {assignee || 'Sin asignar'}
-                  </span>
-                  <span className="real-exec-due"><CalendarDays size={13} />{Number.isFinite(due) ? `Día ${due}` : '—'}</span>
-                  <span className="real-exec-statuses">
-                    <StatusIcon type="presented" active={isRowPresentado(row)} />
-                    <StatusIcon type="archived" active={isArchived(row, archivadoCol, archivadoPorCol)} />
-                  </span>
-                  <ChevronRight className="real-exec-chevron" size={16} />
-                </button>
-              );
-            })}
+            <VirtualClientRows
+              rows={deferredRows}
+              nameKey={nameKey}
+              rucKey={rucKey}
+              rowMeta={rowMeta}
+              onSelect={onSelect}
+              onTogglePresented={canEditStatus ? handleTogglePresented : undefined}
+              onToggleArchived={canEditArchived ? handleToggleArchived : undefined}
+              savingRows={savingRows}
+            />
           </div>
         ) : (
           <div className="real-exec-empty">

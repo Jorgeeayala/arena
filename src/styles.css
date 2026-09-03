@@ -38,7 +38,18 @@
   --shadow-lg: 0 10px 25px -3px rgba(15, 23, 42, 0.15), 0 4px 10px -2px rgba(15, 23, 42, 0.08);
 
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Preferencia global de tamaño de texto (Configuración → Tamaño de
+     texto). App.jsx escribe data-font-scale en <html> y persiste la
+     elección; los tokens tipográficos del tema ejecutivo se multiplican
+     por este factor. "Normal" es el tamaño de referencia del diseño. */
+  --ui-font-scale: 1;
 }
+
+html[data-font-scale="compacto"] { --ui-font-scale: 0.92; }
+html[data-font-scale="normal"] { --ui-font-scale: 1; }
+html[data-font-scale="grande"] { --ui-font-scale: 1.12; }
+html[data-font-scale="extra"] { --ui-font-scale: 1.25; }
 
 [data-theme="dark"] {
   --bg-app: #0f172a;
@@ -2626,6 +2637,79 @@ body {
 }
 
 .settings-theme-option.is-active {
+  background-color: var(--primary-light);
+  border-color: var(--primary-border);
+  color: var(--primary);
+}
+
+/* Tamaño de texto: mismo lenguaje visual que el selector de tema. */
+.settings-subsection {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+
+.settings-subsection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.settings-subsection-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Muestra en vivo el tamaño elegido, sin depender de la escala global
+   (así se puede comparar una opción con otra antes de aplicarla). */
+.settings-font-preview {
+  min-width: 42px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-weight: 700;
+  text-align: center;
+  transition: font-size 0.14s ease;
+}
+
+.settings-font-preview[data-scale="compacto"] { font-size: 12px; }
+.settings-font-preview[data-scale="normal"] { font-size: 14px; }
+.settings-font-preview[data-scale="grande"] { font-size: 16px; }
+.settings-font-preview[data-scale="extra"] { font-size: 18px; }
+
+.settings-font-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.settings-font-option {
+  min-height: 40px;
+  padding: 0 4px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.settings-font-option:hover {
+  background-color: var(--bg-card-hover);
+}
+
+.settings-font-option.is-active {
   background-color: var(--primary-light);
   border-color: var(--primary-border);
   color: var(--primary);
