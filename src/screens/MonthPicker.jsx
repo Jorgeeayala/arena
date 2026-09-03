@@ -30,6 +30,10 @@ export default function MonthPicker({ year, onPick, onChangeYear }) {
   const [error, setError] = useState('');
 
   function loadMonths(force = false) {
+    // Refresco manual: la carga inicial deja `mountedRef.current` en false
+    // al terminar y en ese caso el efecto no vuelve a correr, así que se
+    // habilita acá para que los setState de esta carga manual no se salten.
+    mountedRef.current = true;
     setLoading(true);
     setError('');
     api
