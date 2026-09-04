@@ -8,6 +8,16 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     allowedHosts: true,
+    // Con VITE_BACKEND_URL=/__api el front habla con el backend simulado de
+    // tools/smoke a través del dev server (útil detrás de un proxy/preview,
+    // donde el navegador no puede llegar a localhost:8787).
+    proxy: {
+      '/__api': {
+        target: process.env.SMOKE_BACKEND || 'http://127.0.0.1:8787',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/__api/, ''),
+      },
+    },
   },
   plugins: [
     react(),

@@ -31,7 +31,8 @@ import {
   X,
 } from 'lucide-react';
 import { useClients } from '../context/ClientsContext';
-import { formatPeriodLabel, isAffirmativeValue } from '../utils';
+import { findClaveMarangatuColumn, formatPeriodLabel, isAffirmativeValue } from '../utils';
+import { openMarangatuLogin } from '../marangatu';
 
 const QUICK_FILTERS = [
   { id: 'all', label: 'Todos' },
@@ -115,12 +116,26 @@ const ClientRow = memo(function ClientRow({
   onTogglePresented,
   onToggleArchived,
   saving,
+  marangatu,
 }) {
   const clientName = row[nameKey] || 'Sin nombre';
   const assignee = String(row._assignedUser || '').trim();
 
+  // La fila es un div con rol de botón (no un <button>): adentro viven los
+  // botones de estado y de Marangatu, y un <button> no puede contener otro.
   return (
-    <button type="button" className="real-exec-client-row" onClick={() => onSelect(row)}>
+    <div
+      role="button"
+      tabIndex={0}
+      className="real-exec-client-row"
+      onClick={() => onSelect(row)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(row);
+        }
+      }}
+    >
       <span className="real-exec-index">{String(index + 1).padStart(2, '0')}</span>
       <span className="real-exec-client-identity">
         <span>{String(clientName).charAt(0).toUpperCase()}</span>
@@ -137,6 +152,23 @@ const ClientRow = memo(function ClientRow({
         {Number.isFinite(due) ? `Día ${due}` : '—'}
       </span>
       <span className="real-exec-statuses">
+        {/* Acceso directo a Marangatu (recuperado de la tarjeta anterior):
+            inyecta el RUC y la Clave MH en el login de la SET. El CSS lo
+            muestra sólo en equipos con mouse, donde vive la extensión. */}
+        {marangatu && (
+          <button
+            type="button"
+            className="real-exec-marangatu-btn"
+            title={`Abrir Marangatu con el RUC ${marangatu.user}`}
+            aria-label="Abrir Marangatu con las credenciales de este cliente"
+            onClick={(event) => {
+              event.stopPropagation();
+              openMarangatuLogin(marangatu);
+            }}
+          >
+            <img src="/marangatu.svg" alt="" aria-hidden="true" />
+          </button>
+        )}
         <StatusIcon
           type="presented"
           active={presented}
@@ -151,7 +183,7 @@ const ClientRow = memo(function ClientRow({
         />
       </span>
       <ChevronRight className="real-exec-chevron" size={16} />
-    </button>
+    </div>
   );
 });
 
@@ -172,7 +204,7 @@ function VirtualClientRows({
   onSelect,
   onTogglePresented,
   onToggleArchived,
-  savingRows,
+  savingRowSet,
 }) {
   const listRef = useRef(null);
   const [offset, setOffset] = useState(0);
@@ -235,7 +267,8 @@ function VirtualClientRows({
               onSelect={onSelect}
               onTogglePresented={onTogglePresented}
               onToggleArchived={onToggleArchived}
-              saving={savingRows.includes(row._row)}
+              saving={savingRowSet.has(row._row)}
+              marangatu={meta?.marangatu ?? null}
             />
           </div>
         );
@@ -253,6 +286,204 @@ function Metric({ icon: Icon, value, label, tone }) {
   );
 }
 
+// Las secciones de arriba (hero, métricas, prioridad, equipo, calendario)
+// no dependen del texto del buscador. Van en componentes memo con props
+// memoizadas: escribir sólo re-renderiza el input y la tabla.
+const HeroSection = memo(function HeroSection({ metrics, completion, month, year, onShowPending }) {
+  return (
+    <section className="real-exec-hero">
+      <div className="real-exec-hero-copy">
+        <span className="real-exec-eyebrow"><BarChart3 size={13} /> Panel del período</span>
+        <h1>Tu operación,<br />bajo control.</h1>
+        <p>
+          {metrics.presented} de {metrics.total} clientes ya fueron presentados en{' '}
+          {formatPeriodLabel(month, year)}.
+        </p>
+        <button type="button" onClick={onShowPending}>
+          <Clock3 size={16} /> Revisar {metrics.pending} pendientes
+        </button>
+      </div>
+
+      <div className="real-exec-progress-card">
+        <span>AVANCE REAL</span>
+        <div className="real-exec-progress-ring" style={{ '--real-progress': `${completion * 3.6}deg` }}>
+          <strong>{completion}<small>%</small></strong>
+        </div>
+        <small>{metrics.presented} presentados · {metrics.pending} pendientes</small>
+      </div>
+    </section>
+  );
+});
+
+const MetricsSection = memo(function MetricsSection({ metrics }) {
+  return (
+    <section className="real-exec-metrics" aria-label="Resumen del período">
+      <Metric icon={Users} value={metrics.total} label="Clientes" tone="blue" />
+      <Metric icon={Clock3} value={metrics.pending} label="Pendientes" tone="amber" />
+      <Metric icon={CheckCircle2} value={metrics.presented} label="Presentados" tone="green" />
+      <Metric icon={Archive} value={metrics.archived} label="Archivados" tone="navy" />
+    </section>
+  );
+});
+
+const InsightsSection = memo(function InsightsSection({
+  priorityRows,
+  rowMeta,
+  workload,
+  total,
+  nameKey,
+  rucKey,
+  onSelect,
+}) {
+  return (
+    <section className="real-exec-insights">
+      <article className="real-exec-priority-card">
+        <div className="real-exec-section-heading">
+          <div><span>PRIORIDAD</span><h2>Requieren atención</h2></div>
+          <small>{priorityRows.length}</small>
+        </div>
+        {priorityRows.length ? priorityRows.map((row) => {
+          const due = rowMeta.get(row._row)?.due ?? Number.POSITIVE_INFINITY;
+          return (
+            <button type="button" key={row._row} onClick={() => onSelect(row)}>
+              <i className={due <= 10 ? 'is-urgent' : ''} />
+              <span><strong>{row[nameKey] || 'Sin nombre'}</strong><small>{rucKey ? row[rucKey] : `Fila ${row._row}`}</small></span>
+              <em>{Number.isFinite(due) ? `Día ${due}` : 'Sin fecha'}</em>
+              <ChevronRight size={15} />
+            </button>
+          );
+        }) : (
+          <div className="real-exec-positive-empty"><CheckCircle2 size={18} /> No hay presentaciones pendientes.</div>
+        )}
+      </article>
+
+      <article className="real-exec-workload-card">
+        <div className="real-exec-section-heading">
+          <div><span>EQUIPO</span><h2>Carga asignada</h2></div>
+        </div>
+        {workload.length ? workload.map(([name, count]) => (
+          <div className="real-exec-workload-row" key={name}>
+            <span>{name}</span>
+            <div><i style={{ width: `${total ? (count / total) * 100 : 0}%` }} /></div>
+            <strong>{count}</strong>
+          </div>
+        )) : <span className="real-exec-no-data">Sin asignaciones para mostrar.</span>}
+      </article>
+    </section>
+  );
+});
+
+// Resumen por día de vencimiento. Cada celda filtra la cartera por ese
+// día, para pasar del panorama al detalle en un toque.
+const SummarySection = memo(function SummarySection({ dailySummary, selectedVencimiento, onPickDay }) {
+  if (!dailySummary.length) return null;
+  return (
+    <section className="real-exec-summary">
+      <div className="real-exec-section-heading">
+        <div>
+          <span>CALENDARIO</span>
+          <h2>Resumen por vencimiento</h2>
+        </div>
+        <small>{dailySummary.length}</small>
+      </div>
+
+      <div className="real-exec-summary-grid">
+        {dailySummary.map((entry) => {
+          const key = entry.due === null ? 'sin-fecha' : String(entry.due);
+          const pending = entry.total - entry.presented;
+          const ratio = entry.total ? (entry.presented / entry.total) * 100 : 0;
+          const isSelected = selectedVencimiento === key;
+
+          return (
+            <button
+              type="button"
+              key={key}
+              className={`real-exec-summary-cell ${isSelected ? 'is-active' : ''} ${
+                pending === 0 ? 'is-done' : ''
+              }`}
+              aria-pressed={isSelected}
+              title={
+                entry.due === null
+                  ? 'Clientes sin fecha de vencimiento'
+                  : `Día ${entry.due}: ${entry.presented} de ${entry.total} presentados`
+              }
+              onClick={() => onPickDay(isSelected ? 'todos' : key)}
+            >
+              <span className="real-exec-summary-day">
+                {entry.due === null ? 'Sin fecha' : `Día ${entry.due}`}
+              </span>
+              <span className="real-exec-summary-count">
+                <strong>{entry.presented}</strong>/{entry.total}
+              </span>
+              <span className="real-exec-summary-bar">
+                <i style={{ width: `${ratio}%` }} />
+              </span>
+              <span className="real-exec-summary-pending">
+                {pending === 0 ? 'Completo' : `${pending} pend.`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+});
+
+// Esqueleto de la primera carga: misma estructura que el panel real, así el
+// contenido aparece "en su lugar" en vez de reemplazar un spinner centrado.
+function DashboardSkeleton() {
+  return (
+    <main className="real-exec-screen real-exec-skeleton" aria-busy="true" aria-label="Cargando el panel">
+      <section className="real-exec-hero">
+        <div className="real-exec-hero-copy">
+          <span className="real-exec-skeleton-line" style={{ width: '38%' }} />
+          <span className="real-exec-skeleton-line is-title" style={{ width: '70%' }} />
+          <span className="real-exec-skeleton-line is-title" style={{ width: '55%' }} />
+          <span className="real-exec-skeleton-line" style={{ width: '80%' }} />
+          <span className="real-exec-skeleton-pill" />
+        </div>
+        <div className="real-exec-progress-card">
+          <span className="real-exec-skeleton-line" style={{ width: '50%' }} />
+          <span className="real-exec-skeleton-ring" />
+          <span className="real-exec-skeleton-line" style={{ width: '70%' }} />
+        </div>
+      </section>
+      <section className="real-exec-metrics">
+        {[0, 1, 2, 3].map((i) => (
+          <article key={i} className="real-exec-metric">
+            <span className="real-exec-skeleton-block" style={{ width: 40, height: 40 }} />
+            <span>
+              <span className="real-exec-skeleton-line is-title" style={{ width: 48 }} />
+              <span className="real-exec-skeleton-line" style={{ width: 72 }} />
+            </span>
+          </article>
+        ))}
+      </section>
+      <section className="real-exec-clients">
+        <div className="real-exec-section-heading real-exec-clients-heading">
+          <div>
+            <span className="real-exec-skeleton-line" style={{ width: 110 }} />
+            <span className="real-exec-skeleton-line is-title" style={{ width: 200 }} />
+          </div>
+        </div>
+        <div className="real-exec-skeleton-search" />
+        <div className="real-exec-table">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="real-exec-skeleton-row">
+              <span className="real-exec-skeleton-block" style={{ width: 34, height: 34, borderRadius: '50%' }} />
+              <span>
+                <span className="real-exec-skeleton-line is-title" style={{ width: `${45 + ((i * 17) % 40)}%` }} />
+                <span className="real-exec-skeleton-line" style={{ width: '30%' }} />
+              </span>
+              <span className="real-exec-skeleton-line" style={{ width: 90 }} />
+            </div>
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   { onSelect, onNewClient, readOnly = false },
   ref
@@ -264,6 +495,7 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
     headers,
     assignedRows,
     loading,
+    refreshing,
     error,
     reload,
     syncTeamUsers,
@@ -289,7 +521,7 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
     clearFilters,
     applySharedFilters,
     isRowPresentado,
-    savingRows,
+    savingRowSet,
     saveRowUpdates,
   } = useClients();
 
@@ -391,18 +623,26 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   // regular O(n log n) veces) y otra más por cada fila dibujada. Con la
   // planilla llena eso era el grueso del trabajo en cada tecla del
   // buscador. Ahora se resuelve en una pasada y todo lo demás lee el Map.
+  const claveCol = useMemo(() => findClaveMarangatuColumn(headers), [headers]);
   const rowMeta = useMemo(() => {
     const meta = new Map();
     assignedRows.forEach((row) => {
+      let marangatu = null;
+      if (!readOnly && rucKey && claveCol) {
+        const ruc = String(row[rucKey] ?? '').trim();
+        const clave = String(row[claveCol] ?? '').trim();
+        if (ruc && clave) marangatu = { user: ruc, pass: clave };
+      }
       meta.set(row._row, {
         presented: isRowPresentado(row),
         archived: isArchived(row, archivadoCol, archivadoPorCol),
         due: getDueNumber(row, vencimientoKey),
         assignee: String(row._assignedUser || '').trim(),
+        marangatu,
       });
     });
     return meta;
-  }, [assignedRows, archivadoCol, archivadoPorCol, isRowPresentado, vencimientoKey]);
+  }, [assignedRows, archivadoCol, archivadoPorCol, isRowPresentado, vencimientoKey, readOnly, rucKey, claveCol]);
 
   const metrics = useMemo(() => {
     let presented = 0;
@@ -506,24 +746,33 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   const deferredRows = useDeferredValue(filteredRows);
   const isFiltering = deferredRows !== filteredRows;
 
-  const showPendingClients = () => {
-    setQuickFilter('pending');
+  const scrollToClients = useCallback(() => {
     window.requestAnimationFrame(() => {
       clientSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-  };
+  }, []);
 
-  if (loading) {
-    return (
-      <main className="real-exec-screen real-exec-centered">
-        <RefreshCw className="real-exec-spin" size={28} />
-        <strong>Cargando panel ejecutivo…</strong>
-        <span>Preparando los datos del período.</span>
-      </main>
-    );
+  const showPendingClients = useCallback(() => {
+    setQuickFilter('pending');
+    scrollToClients();
+  }, [scrollToClients]);
+
+  const pickSummaryDay = useCallback(
+    (key) => {
+      setSelectedVencimiento(key);
+      setQuickFilter('all');
+      scrollToClients();
+    },
+    [setSelectedVencimiento, scrollToClients]
+  );
+
+  // `loading` es sólo la primera carga del período: ahí va el esqueleto.
+  // Las recargas (`refreshing`) mantienen el panel en pantalla.
+  if (loading && !assignedRows.length) {
+    return <DashboardSkeleton />;
   }
 
-  if (error) {
+  if (error && !assignedRows.length) {
     return (
       <main className="real-exec-screen real-exec-centered">
         <AlertCircle size={30} />
@@ -536,132 +785,47 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
 
   return (
     <main className="real-exec-screen">
-      <section className="real-exec-hero">
-        <div className="real-exec-hero-copy">
-          <span className="real-exec-eyebrow"><BarChart3 size={13} /> Panel del período</span>
-          <h1>Tu operación,<br />bajo control.</h1>
-          <p>
-            {metrics.presented} de {metrics.total} clientes ya fueron presentados en{' '}
-            {formatPeriodLabel(month, year)}.
-          </p>
-          <button type="button" onClick={showPendingClients}>
-            <Clock3 size={16} /> Revisar {metrics.pending} pendientes
+      {refreshing && (
+        <div className="real-exec-refresh-notice" role="status">
+          <RefreshCw className="real-exec-spin" size={13} />
+          <span>Actualizando la planilla…</span>
+        </div>
+      )}
+      {error && (
+        <div className="real-exec-action-error" role="alert">
+          <AlertCircle size={15} />
+          <span>{error}</span>
+          <button type="button" onClick={() => reload(true)} aria-label="Reintentar">
+            <RefreshCw size={13} />
           </button>
         </div>
-
-        <div className="real-exec-progress-card">
-          <span>AVANCE REAL</span>
-          <div className="real-exec-progress-ring" style={{ '--real-progress': `${completion * 3.6}deg` }}>
-            <strong>{completion}<small>%</small></strong>
-          </div>
-          <small>{metrics.presented} presentados · {metrics.pending} pendientes</small>
-        </div>
-      </section>
-
-      <section className="real-exec-metrics" aria-label="Resumen del período">
-        <Metric icon={Users} value={metrics.total} label="Clientes" tone="blue" />
-        <Metric icon={Clock3} value={metrics.pending} label="Pendientes" tone="amber" />
-        <Metric icon={CheckCircle2} value={metrics.presented} label="Presentados" tone="green" />
-        <Metric icon={Archive} value={metrics.archived} label="Archivados" tone="navy" />
-      </section>
-
-      <section className="real-exec-insights">
-        <article className="real-exec-priority-card">
-          <div className="real-exec-section-heading">
-            <div><span>PRIORIDAD</span><h2>Requieren atención</h2></div>
-            <small>{priorityRows.length}</small>
-          </div>
-          {priorityRows.length ? priorityRows.map((row) => {
-            const due = getDueNumber(row, vencimientoKey);
-            return (
-              <button type="button" key={row._row} onClick={() => onSelect(row)}>
-                <i className={due <= 10 ? 'is-urgent' : ''} />
-                <span><strong>{row[nameKey] || 'Sin nombre'}</strong><small>{rucKey ? row[rucKey] : `Fila ${row._row}`}</small></span>
-                <em>{Number.isFinite(due) ? `Día ${due}` : 'Sin fecha'}</em>
-                <ChevronRight size={15} />
-              </button>
-            );
-          }) : (
-            <div className="real-exec-positive-empty"><CheckCircle2 size={18} /> No hay presentaciones pendientes.</div>
-          )}
-        </article>
-
-        <article className="real-exec-workload-card">
-          <div className="real-exec-section-heading">
-            <div><span>EQUIPO</span><h2>Carga asignada</h2></div>
-          </div>
-          {workload.length ? workload.map(([name, count]) => (
-            <div className="real-exec-workload-row" key={name}>
-              <span>{name}</span>
-              <div><i style={{ width: `${metrics.total ? (count / metrics.total) * 100 : 0}%` }} /></div>
-              <strong>{count}</strong>
-            </div>
-          )) : <span className="real-exec-no-data">Sin asignaciones para mostrar.</span>}
-        </article>
-      </section>
-
-      {/* Resumen por día de vencimiento. Cada fila filtra la cartera por
-          ese día, para pasar del panorama al detalle en un toque. */}
-      {dailySummary.length > 0 && (
-        <section className="real-exec-summary">
-          <div className="real-exec-section-heading">
-            <div>
-              <span>CALENDARIO</span>
-              <h2>Resumen por vencimiento</h2>
-            </div>
-            <small>{dailySummary.length}</small>
-          </div>
-
-          <div className="real-exec-summary-grid">
-            {dailySummary.map((entry) => {
-              const key = entry.due === null ? 'sin-fecha' : String(entry.due);
-              const pending = entry.total - entry.presented;
-              const ratio = entry.total ? (entry.presented / entry.total) * 100 : 0;
-              const isSelected = selectedVencimiento === key;
-
-              return (
-                <button
-                  type="button"
-                  key={key}
-                  className={`real-exec-summary-cell ${isSelected ? 'is-active' : ''} ${
-                    pending === 0 ? 'is-done' : ''
-                  }`}
-                  aria-pressed={isSelected}
-                  title={
-                    entry.due === null
-                      ? 'Clientes sin fecha de vencimiento'
-                      : `Día ${entry.due}: ${entry.presented} de ${entry.total} presentados`
-                  }
-                  onClick={() => {
-                    // Un segundo toque sobre el mismo día vuelve a "todos".
-                    setSelectedVencimiento(isSelected ? 'todos' : key);
-                    setQuickFilter('all');
-                    window.requestAnimationFrame(() => {
-                      clientSectionRef.current?.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start',
-                      });
-                    });
-                  }}
-                >
-                  <span className="real-exec-summary-day">
-                    {entry.due === null ? 'Sin fecha' : `Día ${entry.due}`}
-                  </span>
-                  <span className="real-exec-summary-count">
-                    <strong>{entry.presented}</strong>/{entry.total}
-                  </span>
-                  <span className="real-exec-summary-bar">
-                    <i style={{ width: `${ratio}%` }} />
-                  </span>
-                  <span className="real-exec-summary-pending">
-                    {pending === 0 ? 'Completo' : `${pending} pend.`}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
       )}
+
+      <HeroSection
+        metrics={metrics}
+        completion={completion}
+        month={month}
+        year={year}
+        onShowPending={showPendingClients}
+      />
+
+      <MetricsSection metrics={metrics} />
+
+      <InsightsSection
+        priorityRows={priorityRows}
+        rowMeta={rowMeta}
+        workload={workload}
+        total={metrics.total}
+        nameKey={nameKey}
+        rucKey={rucKey}
+        onSelect={onSelect}
+      />
+
+      <SummarySection
+        dailySummary={dailySummary}
+        selectedVencimiento={selectedVencimiento}
+        onPickDay={pickSummaryDay}
+      />
 
       <section className="real-exec-clients" ref={clientSectionRef}>
         <div className="real-exec-section-heading real-exec-clients-heading">
@@ -839,7 +1003,7 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
               onSelect={onSelect}
               onTogglePresented={canEditStatus ? handleTogglePresented : undefined}
               onToggleArchived={canEditArchived ? handleToggleArchived : undefined}
-              savingRows={savingRows}
+              savingRowSet={savingRowSet}
             />
           </div>
         ) : (

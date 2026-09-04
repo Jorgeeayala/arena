@@ -30,7 +30,9 @@ import {
   pickNameColumn,
   findVencimientoColumn,
   findRucColumn,
-  getClientSearchScore,
+  buildRowSearchIndex,
+  prepareSearchQuery,
+  scoreSearchIndex,
   findUserStampColumn,
   findEncargadoColumn,
   findPresentadoColumn,
@@ -135,7 +137,10 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   // --- Datos de la planilla (fuente única) -------------------------------
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
+  // `loading` es SÓLO la primera carga de un período (no hay nada para
+  // mostrar); `refreshing` es una recarga con datos ya en pantalla.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   // --- Equipo de usuarios ------------------------------------------------
@@ -148,14 +153,14 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
 
   // Si `user` no está en el equipo (recién logueado con un equipo viejo en
   // caché, o un equipo local que no lo incluye), se suma al roster para que
-  // siempre aparezca en el reparto. Se hace por derivación (no en un efecto)
-  // porque `rosterUsers` es un estado con persistencia propia: la próxima
-  // sincronización con Sheets ya reemplaza el array completo.
-  if (user && !rosterUsers.includes(user)) {
-    rosterUsers.push(user);
-  }
+  // siempre aparezca en el reparto. Se deriva con useMemo (antes se mutaba
+  // el estado durante el render y el memo de teamUsers no se enteraba).
+  const rosterWithUser = useMemo(
+    () => (user && !rosterUsers.includes(user) ? [...rosterUsers, user] : rosterUsers),
+    [rosterUsers, user]
+  );
 
-  const teamUsers = useMemo(() => orderUsers(rosterUsers, teamOrder), [rosterUsers, teamOrder]);
+  const teamUsers = useMemo(() => orderUsers(rosterWithUser, teamOrder), [rosterWithUser, teamOrder]);
 
   // Participantes del reparto. `null` = no se definió todavía = participan
   // todos (así nadie se queda sin reparto por no haber tocado nada).
@@ -220,6 +225,9 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   // --- Indicadores de guardado por fila (visibles en cualquier pantalla) --
   const [savingRows, setSavingRows] = useState([]);
   const [savedRows, setSavedRows] = useState([]);
+  // Sets para consultar en O(1) por fila (antes era includes() por fila).
+  const savingRowSet = useMemo(() => new Set(savingRows), [savingRows]);
+  const savedRowSet = useMemo(() => new Set(savedRows), [savedRows]);
   const savedTimers = useRef(new Map());
 
   useEffect(
@@ -239,24 +247,55 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   }, [rows]);
 
   // --- Carga de datos ----------------------------------------------------
+  // Período que está en pantalla, para descartar respuestas de otro período.
+  const periodRef = useRef({ year, month });
+  periodRef.current = { year, month };
+  const hasDataRef = useRef(false);
+
+  const applySheetData = useCallback((data) => {
+    setHeaders(data.headers || []);
+    // Copia defensiva: el cache de api.js muta sus filas in-place con
+    // las actualizaciones optimistas; trabajar con copias evita que el
+    // state de React cambie "por atrás" sin disparar un re-render.
+    setRows((data.rows || []).map((r) => ({ ...r })));
+    hasDataRef.current = true;
+  }, []);
+
   const reload = useCallback(
     async (force = false) => {
-      setLoading(true);
+      // Con datos en pantalla la recarga NO desmonta la lista: se marca
+      // `refreshing` y la lista sigue visible hasta que llegan los nuevos.
+      const firstLoad = !hasDataRef.current;
+      if (firstLoad) setLoading(true);
+      else setRefreshing(true);
       setError('');
       try {
         const data = await api.readClients(year, month, force);
-        setHeaders(data.headers || []);
-        // Copia defensiva: el cache de api.js muta sus filas in-place con
-        // las actualizaciones optimistas; trabajar con copias evita que el
-        // state de React cambie "por atrás" sin disparar un re-render.
-        setRows((data.rows || []).map((r) => ({ ...r })));
+        if (periodRef.current.year !== year || periodRef.current.month !== month) return;
+        applySheetData(data);
       } catch (err) {
+        if (periodRef.current.year !== year || periodRef.current.month !== month) return;
         setError(err.message || 'No se pudo cargar la planilla');
       } finally {
-        setLoading(false);
+        if (periodRef.current.year === year && periodRef.current.month === month) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [year, month]
+    [year, month, applySheetData]
+  );
+
+  // Cuando la recarga en segundo plano de api.js trae datos nuevos, se
+  // repintan solos (antes quedaban viejos hasta apretar "Actualizar").
+  useEffect(
+    () =>
+      api.onSheetData(({ year: y, sheet, data }) => {
+        if (y === periodRef.current.year && sheet === periodRef.current.month && data) {
+          applySheetData(data);
+        }
+      }),
+    [applySheetData]
   );
 
   const syncTeamUsers = useCallback(
@@ -379,6 +418,25 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
     [vencimientoKey, repartoUsers]
   );
 
+  // Índice de búsqueda por fila (una vez por cambio de datos, no por tecla).
+  const searchIndex = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => map.set(row._row, buildRowSearchIndex(row, nameKey, rucKey)));
+    return map;
+  }, [rows, nameKey, rucKey]);
+
+  const preparedQuery = useMemo(() => prepareSearchQuery(query), [query]);
+
+  // Puntaje de una fila para la búsqueda actual (0 si no hay búsqueda).
+  const getSearchScore = useCallback(
+    (row) => {
+      if (!preparedQuery) return 0;
+      const index = searchIndex.get(row._row) || buildRowSearchIndex(row, nameKey, rucKey);
+      return scoreSearchIndex(index, preparedQuery);
+    },
+    [searchIndex, preparedQuery, nameKey, rucKey]
+  );
+
   const unassignedCount = useMemo(() => {
     if (!encargadoCol) return rows.length;
     return rows.filter((r) => !String(r[encargadoCol] || '').trim()).length;
@@ -420,8 +478,8 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
     (list) => {
       let out = [...list];
 
-      if (query.trim()) {
-        out = out.filter((row) => getClientSearchScore(row, query, nameKey, rucKey) >= 0);
+      if (preparedQuery) {
+        out = out.filter((row) => getSearchScore(row) >= 0);
       }
 
       if (vencimientoKey && selectedVencimiento !== 'todos') {
@@ -442,9 +500,8 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       return out;
     },
     [
-      query,
-      nameKey,
-      rucKey,
+      preparedQuery,
+      getSearchScore,
       vencimientoKey,
       selectedVencimiento,
       getVencimientoDay,
@@ -481,6 +538,8 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   useEffect(() => {
     if (!year || !month) return;
     // Es otra planilla: los datos y filtros anteriores ya no aplican.
+    hasDataRef.current = false;
+    setRows([]);
     clearFilters();
     reload(false);
   }, [year, month, reload, clearFilters]);
@@ -597,6 +656,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       assignedRows,
       suggestRoundRobin,
       loading,
+      refreshing,
       error,
       reload,
       // equipo
@@ -633,6 +693,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       sortBy,
       setSortBy,
       applySharedFilters,
+      getSearchScore,
       matchesAssignee,
       isRowPresentado,
       activeFilterCount,
@@ -641,6 +702,8 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       // escritura
       savingRows,
       savedRows,
+      savingRowSet,
+      savedRowSet,
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,
@@ -659,6 +722,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       assignedRows,
       suggestRoundRobin,
       loading,
+      refreshing,
       error,
       reload,
       teamUsers,
@@ -687,6 +751,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       selectedAssignee,
       sortBy,
       applySharedFilters,
+      getSearchScore,
       matchesAssignee,
       isRowPresentado,
       activeFilterCount,
@@ -694,6 +759,8 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       clearFilters,
       savingRows,
       savedRows,
+      savingRowSet,
+      savedRowSet,
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,

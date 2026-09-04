@@ -342,6 +342,17 @@ function isSameUser(left, right) {
   return normalizeSearchText(left) === normalizeSearchText(right);
 }
 
+const sheetDataListeners = new Set();
+function notifySheetData(year, sheet, data) {
+  sheetDataListeners.forEach((listener) => {
+    try {
+      listener({ year, sheet, data });
+    } catch (error) {
+      console.warn('onSheetData listener falló:', error);
+    }
+  });
+}
+
 export const api = {
   ping: () => request({ action: 'ping' }, { handleSessionFailure: false }),
 
@@ -427,6 +438,14 @@ export const api = {
     return () => authFailureListeners.delete(listener);
   },
 
+  // Avisa cuando la recarga en segundo plano de readClients() trae datos
+  // nuevos: listener({ year, sheet, data }). Sin esto, el caché se
+  // actualizaba pero React seguía mostrando la copia vieja.
+  onSheetData: (listener) => {
+    sheetDataListeners.add(listener);
+    return () => sheetDataListeners.delete(listener);
+  },
+
   listUsers: async (force = false) => {
     if (!force && cache.users) return cache.users.map(getUserName).filter(Boolean);
 
@@ -481,6 +500,7 @@ export const api = {
             year,
             sheet
           );
+          notifySheetData(year, sheet, cache.read[key]);
         }
       }).catch(() => {});
       return cache.read[key];

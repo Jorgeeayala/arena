@@ -42,66 +42,84 @@ export function normalizeSearchText(value) {
     .trim();
 }
 
-function allTermsMatchWordStarts(text, terms) {
-  const words = text.split(' ').filter(Boolean);
+/**
+ * Búsqueda en dos etapas, para no normalizar la fila entera en cada tecla:
+ *   1. buildRowSearchIndex(row) -> una vez por fila (cuando cambian los datos);
+ *   2. prepareSearchQuery(query) -> una vez por tecla;
+ *   3. scoreSearchIndex(index, prepared) -> sólo compara strings ya listos.
+ * getClientSearchScore() sigue existiendo como atajo (sin caché).
+ */
+export function buildRowSearchIndex(row, nameKey, rucKey) {
+  const name = normalizeSearchText(nameKey ? row[nameKey] : '');
+  const ruc = normalizeSearchText(rucKey ? row[rucKey] : '');
+  const others = [];
+  for (const key in row) {
+    if (key.startsWith('_') || key === nameKey || key === rucKey) continue;
+    const value = normalizeSearchText(row[key]);
+    if (value) others.push(value);
+  }
+  return {
+    name,
+    nameWords: name ? name.split(' ') : [],
+    compactRuc: ruc.replace(/\s+/g, ''),
+    others,
+    othersWords: others.map((v) => v.split(' ')),
+    all: [name, ruc, ...others].join(' '),
+  };
+}
+
+export function prepareSearchQuery(query) {
+  const normalized = normalizeSearchText(query);
+  if (!normalized) return null;
+  return {
+    normalized,
+    terms: normalized.split(' ').filter(Boolean),
+    compact: normalized.replace(/\s+/g, ''),
+  };
+}
+
+function termsMatchWords(words, terms) {
   return terms.every((term) => words.some((word) => word.startsWith(term)));
 }
 
 /**
- * Puntaje de relevancia de una fila para la búsqueda (mayor = mejor).
+ * Puntaje de relevancia (mayor = mejor). -1 cuando la fila no coincide.
  * - Nombre/Razón social siempre tiene la prioridad más alta.
  * - RUC queda segundo.
  * - El resto de las columnas permite seguir encontrando por cualquier dato.
- * Devuelve -1 cuando la fila no coincide.
  */
-export function getClientSearchScore(row, query, nameKey, rucKey) {
-  const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return 0;
-
-  const terms = normalizedQuery.split(' ').filter(Boolean);
-  const compactQuery = normalizedQuery.replace(/\s+/g, '');
-  const name = normalizeSearchText(nameKey ? row[nameKey] : '');
+export function scoreSearchIndex(index, prepared) {
+  if (!prepared) return 0;
+  const { normalized, terms, compact } = prepared;
+  const { name, nameWords, compactRuc, others, othersWords, all } = index;
 
   if (name) {
-    if (name === normalizedQuery) return 1000;
-    if (name.startsWith(normalizedQuery)) return 950;
-    if (name.includes(normalizedQuery)) return 900;
-    if (allTermsMatchWordStarts(name, terms)) return 850;
+    if (name === normalized) return 1000;
+    if (name.startsWith(normalized)) return 950;
+    if (name.includes(normalized)) return 900;
+    if (termsMatchWords(nameWords, terms)) return 850;
     if (terms.every((term) => name.includes(term))) return 800;
   }
 
-  const ruc = normalizeSearchText(rucKey ? row[rucKey] : '');
-  const compactRuc = ruc.replace(/\s+/g, '');
-  if (compactRuc && compactQuery) {
-    if (compactRuc === compactQuery) return 700;
-    if (compactRuc.startsWith(compactQuery)) return 650;
-    if (compactRuc.includes(compactQuery)) return 600;
+  if (compactRuc && compact) {
+    if (compactRuc === compact) return 700;
+    if (compactRuc.startsWith(compact)) return 650;
+    if (compactRuc.includes(compact)) return 600;
   }
 
-  const otherValues = Object.entries(row)
-    .filter(([key]) => !key.startsWith('_') && key !== nameKey && key !== rucKey)
-    .map(([, value]) => normalizeSearchText(value))
-    .filter(Boolean);
+  for (let i = 0; i < others.length; i++) if (others[i] === normalized) return 500;
+  for (let i = 0; i < others.length; i++) if (others[i].startsWith(normalized)) return 450;
+  for (let i = 0; i < others.length; i++) if (others[i].includes(normalized)) return 400;
+  for (let i = 0; i < othersWords.length; i++) if (termsMatchWords(othersWords[i], terms)) return 350;
 
-  for (const value of otherValues) {
-    if (value === normalizedQuery) return 500;
-  }
-  for (const value of otherValues) {
-    if (value.startsWith(normalizedQuery)) return 450;
-  }
-  for (const value of otherValues) {
-    if (value.includes(normalizedQuery)) return 400;
-  }
-  for (const value of otherValues) {
-    if (allTermsMatchWordStarts(value, terms)) return 350;
-  }
-
-  // Permite consultas combinadas, por ejemplo parte del nombre + parte del
-  // RUC, aunque los términos estén distribuidos entre distintas columnas.
-  const searchableRow = [name, ruc, ...otherValues].join(' ');
-  if (terms.every((term) => searchableRow.includes(term))) return 300;
+  // Consultas combinadas (parte del nombre + parte del RUC) repartidas entre columnas.
+  if (terms.every((term) => all.includes(term))) return 300;
 
   return -1;
+}
+
+export function getClientSearchScore(row, query, nameKey, rucKey) {
+  return scoreSearchIndex(buildRowSearchIndex(row, nameKey, rucKey), prepareSearchQuery(query));
 }
 
 // Los permisos usan una forma canónica aunque la planilla tenga variantes

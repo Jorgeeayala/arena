@@ -94,10 +94,11 @@
   gap: 24px;
   padding: 10px clamp(18px, 4vw, 48px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(28, 31, 35, 0.97);
+  /* Fondo sólido: el blur sobre un 97 % de opacidad casi no se veía y se
+     recalculaba en cada frame del scroll (tirones en Android). */
+  background: #1c1f23;
   color: #ffffff;
   box-shadow: 0 8px 26px rgba(28, 31, 35, 0.24);
-  backdrop-filter: blur(16px);
 }
 
 .real-exec-navbar button {
@@ -329,7 +330,7 @@
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.075);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(6px);
 }
 
 .real-exec-progress-card > span {
@@ -1033,7 +1034,16 @@
   background: var(--rx-surface);
   color: var(--rx-subtle);
   cursor: pointer;
+  box-sizing: border-box;
+  font: inherit;
+  text-align: left;
+  user-select: none;
   transition: background 140ms ease;
+}
+
+.real-exec-client-row:focus-visible {
+  outline: 2px solid var(--rx-brand);
+  outline-offset: -2px;
 }
 
 .real-exec-client-row:last-child {
@@ -1455,5 +1465,152 @@
   .real-exec-screen *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Recarga sin desmontar: aviso discreto arriba del panel mientras llega
+   la planilla nueva. La lista sigue visible debajo.
+   ------------------------------------------------------------------- */
+.real-exec-refresh-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--rx-line);
+  border-radius: 999px;
+  background: var(--rx-soft);
+  color: var(--rx-subtle);
+  font-size: var(--rx-fs-xs);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------
+   Esqueleto de la primera carga. Anima SÓLO opacidad (compone sin
+   repintar) y se queda quieto con prefers-reduced-motion.
+   ------------------------------------------------------------------- */
+.real-exec-skeleton .real-exec-hero-copy,
+.real-exec-skeleton .real-exec-progress-card,
+.real-exec-skeleton .real-exec-metric > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.real-exec-skeleton .real-exec-progress-card {
+  align-items: center;
+}
+
+.real-exec-skeleton-line,
+.real-exec-skeleton-block,
+.real-exec-skeleton-pill,
+.real-exec-skeleton-ring,
+.real-exec-skeleton-search {
+  display: block;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--rx-ink, #1c1f23) 10%, transparent);
+  animation: real-exec-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.real-exec-skeleton .real-exec-hero .real-exec-skeleton-line,
+.real-exec-skeleton .real-exec-hero .real-exec-skeleton-pill,
+.real-exec-skeleton .real-exec-hero .real-exec-skeleton-ring {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.real-exec-skeleton-line {
+  height: 12px;
+}
+
+.real-exec-skeleton-line.is-title {
+  height: 20px;
+}
+
+.real-exec-skeleton-pill {
+  width: 190px;
+  height: 40px;
+  border-radius: 999px;
+}
+
+.real-exec-skeleton-ring {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+}
+
+.real-exec-skeleton-search {
+  height: 46px;
+  margin: 14px 0;
+  border-radius: 14px;
+}
+
+.real-exec-skeleton-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 62px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rx-line);
+}
+
+.real-exec-skeleton-row > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@keyframes real-exec-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .real-exec-skeleton-line,
+  .real-exec-skeleton-block,
+  .real-exec-skeleton-pill,
+  .real-exec-skeleton-ring,
+  .real-exec-skeleton-search {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Acceso a Marangatu por fila (inyección de RUC + Clave MH). Sólo en
+   equipos con mouse: la extensión que hace la inyección no existe en el
+   teléfono, donde el acceso sigue en el detalle del cliente.
+   ------------------------------------------------------------------- */
+.real-exec-marangatu-btn {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .real-exec-marangatu-btn {
+    display: grid;
+    place-items: center;
+    width: 2em;
+    height: 2em;
+    padding: 0;
+    border: 1px solid var(--rx-line);
+    border-radius: 9px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .real-exec-marangatu-btn img {
+    width: 1.25em;
+    height: 1.25em;
+    object-fit: contain;
+  }
+
+  .real-exec-marangatu-btn:hover {
+    border-color: var(--rx-brand);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .real-exec-marangatu-btn:active {
+    transform: scale(0.92);
   }
 }

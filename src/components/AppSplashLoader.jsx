@@ -11,12 +11,12 @@ import { motion, AnimatePresence } from 'motion/react';
  * mensaje de error de la pantalla.
  */
 export default function AppSplashLoader({
-  logoSrc = '/logo-mj.png',
+  logoSrc = '/logo-mj.webp',
   ready = false,
   onFinished = null,
   message = 'Preparando el sistema...',
   minDurationMs = 1000,
-  maxDurationMs = 3000,
+  maxDurationMs = 1600,
 }) {
   const [showSplash, setShowSplash] = useState(true);
   const [minimumElapsed, setMinimumElapsed] = useState(false);

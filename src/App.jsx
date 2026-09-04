@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -7,12 +7,14 @@ import PinLogin from './screens/PinLogin';
 import PinSetup from './screens/PinSetup';
 import YearPicker from './screens/YearPicker';
 import MonthPicker from './screens/MonthPicker';
-import ClientDetail from './screens/ClientDetail';
-import NewClient from './screens/NewClient';
-import AssignClients from './screens/AssignClients';
+// Pantallas pesadas que no hacen falta para arrancar (el selector de
+// usuario / PIN se muestra sin descargarlas): van en chunks aparte.
+const ClientDetail = lazy(() => import('./screens/ClientDetail'));
+const NewClient = lazy(() => import('./screens/NewClient'));
+const AssignClients = lazy(() => import('./screens/AssignClients'));
 import AppSplashLoader from './components/AppSplashLoader';
 import ScreenErrorBoundary from './components/ScreenErrorBoundary';
-import SettingsDialog from './components/SettingsDialog';
+const SettingsDialog = lazy(() => import('./components/SettingsDialog'));
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
 import {
@@ -518,7 +520,7 @@ export default function App({
       return (
         <header className="real-exec-navbar">
           <div className="real-exec-navbar-brand">
-            <img src="/logo-mj.png" alt="MJ Estudio Contable" />
+            <img src="/logo-mj.webp" alt="MJ Estudio Contable" />
             <div><strong>MJ Control</strong><span>Inteligencia operativa</span></div>
           </div>
 
@@ -591,7 +593,7 @@ export default function App({
             whileTap={{ scale: 0.98 }}
           >
             <div className="brand-icon-wrapper">
-              <img src="/logo-mj.png" alt="" className="brand-logo-img" />
+              <img src="/logo-mj.webp" alt="" className="brand-logo-img" />
             </div>
             <span>Control Clientes</span>
           </motion.div>
@@ -603,7 +605,7 @@ export default function App({
                 configuración y otras funciones. */}
             {user && (
               <div className="mobile-nav-left">
-                <img src="/logo-mj.png" alt="MJ Estudio Contable" className="mobile-nav-logo" />
+                <img src="/logo-mj.webp" alt="MJ Estudio Contable" className="mobile-nav-logo" />
                 <motion.button
                   className="mobile-menu-btn"
                   whileHover={{ scale: 1.06 }}
@@ -727,7 +729,7 @@ export default function App({
             >
               <div className="mobile-drawer-header">
                 <span className="mobile-drawer-title">
-                  <img src="/logo-mj.png" alt="" className="mobile-drawer-logo" />
+                  <img src="/logo-mj.webp" alt="" className="mobile-drawer-logo" />
                   Menú
                 </span>
                 <button
@@ -785,10 +787,10 @@ export default function App({
   return (
     <div className={`app-container ${uiMode === 'executive' ? 'real-exec-app' : ''}`}>
       <AppSplashLoader
-        logoSrc="/logo-mj.png"
+        logoSrc="/logo-mj.webp"
         ready={initialContentReady}
         minDurationMs={600}
-        maxDurationMs={3000}
+        maxDurationMs={1600}
       />
       {authenticated && renderNavbar()}
       {pinChangeNotice && (
@@ -836,8 +838,10 @@ export default function App({
         />
       </ClientsProvider>
 
+      {settingsOpen && (
+      <Suspense fallback={null}>
       <SettingsDialog
-        key={settingsOpen ? 'settings-open' : 'settings-closed'}
+        key="settings-open"
         open={settingsOpen}
         user={user}
         theme={theme}
@@ -852,6 +856,8 @@ export default function App({
         onThemeChange={setTheme}
         onFontScaleChange={setFontScale}
       />
+      </Suspense>
+      )}
     </div>
   );
 }
@@ -1051,7 +1057,9 @@ function PeriodScreens({
   // instante en blanco en el medio.
   return (
     <ScreenErrorBoundary key={screenBoundaryKey} onBack={handleScreenErrorBack}>
-      <AnimatePresence mode="popLayout">{getScreenContent()}</AnimatePresence>
+      <Suspense fallback={<div className="lazy-screen-fallback" aria-busy="true" />}>
+        <AnimatePresence mode="popLayout">{getScreenContent()}</AnimatePresence>
+      </Suspense>
     </ScreenErrorBoundary>
   );
 }
