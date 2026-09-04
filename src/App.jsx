@@ -14,6 +14,9 @@ const NewClient = lazy(() => import('./screens/NewClient'));
 const AssignClients = lazy(() => import('./screens/AssignClients'));
 import AppSplashLoader from './components/AppSplashLoader';
 import ScreenErrorBoundary from './components/ScreenErrorBoundary';
+import MobileTabBar from './components/MobileTabBar';
+import DesktopSidebar from './components/DesktopSidebar';
+import useMediaQuery from './hooks/useMediaQuery';
 const SettingsDialog = lazy(() => import('./components/SettingsDialog'));
 import { ClientsProvider, useClients } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
@@ -93,6 +96,8 @@ export default function App({
   const [creatingWithHeaders, setCreatingWithHeaders] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignClientsOpen, setAssignClientsOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState('clients');
+  const isMobilePeriodNav = useMediaQuery('(max-width: 860px)');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pinChangeError, setPinChangeError] = useState('');
   const [pinChangeSubmitting, setPinChangeSubmitting] = useState(false);
@@ -111,6 +116,7 @@ export default function App({
   const [authGeneration, setAuthGeneration] = useState(0);
   const authAttemptRef = useRef(0);
   const periodOverviewRef = useRef(null);
+  const periodTabScrollRef = useRef({ stats: 0, clients: 0, assign: 0 });
   const authenticated = authState.status === 'authenticated';
   const userRole = authenticated ? authState.session?.user?.role : null;
   const activeSessionToken = authState.session?.token || '';
@@ -127,6 +133,7 @@ export default function App({
     setSelectedClient(null);
     setCreatingWithHeaders(null);
     setAssignClientsOpen(false);
+    setMobileTab('clients');
     setMobileMenuOpen(false);
   }, []);
 
@@ -361,10 +368,13 @@ export default function App({
     const listenerPromise = CapacitorApp.addListener('backButton', () => {
       if (assignClientsOpen) {
         setAssignClientsOpen(false);
+        setMobileTab('clients');
       } else if (creatingWithHeaders) {
         setCreatingWithHeaders(null);
       } else if (selectedClient) {
         setSelectedClient(null);
+      } else if (mobileTab !== 'clients') {
+        setMobileTab('clients');
       } else if (month) {
         setMonth(null);
       } else if (year) {
@@ -377,7 +387,7 @@ export default function App({
     return () => {
       listenerPromise.then((listener) => listener.remove());
     };
-  }, [assignClientsOpen, creatingWithHeaders, selectedClient, month, year]);
+  }, [assignClientsOpen, creatingWithHeaders, mobileTab, selectedClient, month, year]);
 
   // La confirmación de PIN actualizado desaparece sola para no acumular
   // avisos en pantalla.
@@ -399,8 +409,26 @@ export default function App({
 
   function handlePickMonth(chosenMonth) {
     setMobileMenuOpen(false);
+    periodTabScrollRef.current = { stats: 0, clients: 0, assign: 0 };
+    setMobileTab('clients');
     setMonth(chosenMonth);
   }
+
+  const handleMobileTabChange = useCallback((tab) => {
+    periodTabScrollRef.current[mobileTab] = window.scrollY;
+    setSelectedClient(null);
+    setCreatingWithHeaders(null);
+    setMobileTab(tab);
+    setAssignClientsOpen(tab === 'assign');
+  }, [mobileTab]);
+
+  useEffect(() => {
+    if (!year || !month || selectedClient || creatingWithHeaders) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: periodTabScrollRef.current[mobileTab] || 0, behavior: 'auto' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [creatingWithHeaders, mobileTab, month, selectedClient, year]);
 
   async function handlePinSubmit(pin) {
     const attemptId = ++authAttemptRef.current;
@@ -542,6 +570,7 @@ export default function App({
                 className="real-exec-period-button"
                 onClick={() => {
                   setSelectedClient(null);
+                  setMobileTab('clients');
                   setMonth(null);
                 }}
                 title="Cambiar período"
@@ -553,8 +582,7 @@ export default function App({
             {canAssignClients && year && month && !selectedClient && (
               <button type="button"
                 className="real-exec-period-button real-exec-assign-button"
-                onClick={() => { setSelectedClient(null);
-                  setCreatingWithHeaders(null); setAssignClientsOpen(true); }}
+                onClick={() => handleMobileTabChange('assign')}
                 title="Asignar clientes">
                 <UserCog size={14} />
                 <span>Asignar</span>
@@ -826,7 +854,10 @@ export default function App({
           onPickYear={handlePickYear}
           onPickMonth={handlePickMonth}
           onChangeYear={() => setYear(null)}
-          onChangeMonth={() => setMonth(null)}
+          onChangeMonth={() => {
+            setMobileTab('clients');
+            setMonth(null);
+          }}
           selectedClient={selectedClient}
           onSelectClient={setSelectedClient}
           onBackFromDetail={() => setSelectedClient(null)}
@@ -834,9 +865,34 @@ export default function App({
           onNewClient={setCreatingWithHeaders}
           onCancelNewClient={() => setCreatingWithHeaders(null)}
           assignClientsOpen={canAssignClients && assignClientsOpen}
-          onBackFromAssign={() => setAssignClientsOpen(false)}
+          onBackFromAssign={() => {
+            setAssignClientsOpen(false);
+            setMobileTab('clients');
+          }}
+          usePeriodTabs={uiMode === 'executive'}
+          isMobilePeriodNav={uiMode === 'executive' && isMobilePeriodNav}
+          mobileTab={mobileTab}
+          onMobileTabChange={handleMobileTabChange}
         />
       </ClientsProvider>
+
+      {uiMode === 'executive' && !isMobilePeriodNav && authenticated && year && month &&
+        !selectedClient && !creatingWithHeaders && (
+          <DesktopSidebar
+            activeTab={assignClientsOpen ? 'assign' : mobileTab}
+            canAssignClients={canAssignClients}
+            onChange={handleMobileTabChange}
+          />
+        )}
+
+      {uiMode === 'executive' && isMobilePeriodNav && authenticated && year && month &&
+        !selectedClient && !creatingWithHeaders && (
+          <MobileTabBar
+            activeTab={assignClientsOpen ? 'assign' : mobileTab}
+            canAssignClients={canAssignClients}
+            onChange={handleMobileTabChange}
+          />
+        )}
 
       {settingsOpen && (
       <Suspense fallback={null}>
@@ -891,6 +947,10 @@ function PeriodScreens({
   onCancelNewClient,
   assignClientsOpen,
   onBackFromAssign,
+  usePeriodTabs,
+  isMobilePeriodNav,
+  mobileTab,
+  onMobileTabChange,
 }) {
   const { reload } = useClients();
 
@@ -1004,10 +1064,13 @@ function PeriodScreens({
     }
 
     return (
-      <motion.div key={`executive-overview-${year}-${month}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
+      <motion.div key={`executive-overview-${year}-${month}-${usePeriodTabs ? mobileTab : 'all'}`} variants={pageVariants} initial="initial" animate="animate" exit="exit">
         <PeriodOverviewComponent ref={periodOverviewRef}
           onSelect={onSelectClient} onNewClient={onNewClient}
-          readOnly={readOnlyPreview} />
+          readOnly={readOnlyPreview}
+          section={usePeriodTabs ? mobileTab : 'all'}
+          withDesktopSidebar={usePeriodTabs && !isMobilePeriodNav}
+          onGoToClients={() => onMobileTabChange('clients')} />
       </motion.div>
     );
   };
@@ -1026,7 +1089,7 @@ function PeriodScreens({
               ? `new-client-${year}-${month}`
               : selectedClient
                 ? `client-detail-${selectedClient._row}-${year}-${month}`
-                : `executive-overview-${year}-${month}`;
+                : `executive-overview-${year}-${month}-${usePeriodTabs ? mobileTab : 'all'}`;
 
   // Cada pantalla vuelve a una ruta segura diferente. Cambiar la key desmonta
   // el boundary que falló para que el error no sobreviva a la navegación.

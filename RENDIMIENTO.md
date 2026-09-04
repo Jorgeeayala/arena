@@ -79,31 +79,29 @@ hay que multiplicarlos por 5 o 10, que es donde se sienten como lag.
 
 ---
 
-## Lo que falta (para el próximo agente)
+## Estado de los pendientes
 
-Ordenado por lo que el usuario señaló como funciones que no terminaron de
-migrar de la interfaz anterior:
+Resueltos en la sesión de UI posterior:
 
-1. **Acciones masivas.** Existía `components/BulkActionToolbar.jsx`: selección
-   múltiple con casillas, "seleccionar todos", asignar un lote a un encargado
-   y aviso de progreso. La UI ejecutiva no tiene nada equivalente. Es la
-   función perdida más grande y la más pedida en el uso diario.
-2. **Orden manual.** El contexto sigue exponiendo `sortBy` / `setSortBy` y
-   nadie los usa: la lista ordena siempre por vencimiento y después por
-   nombre. La interfaz anterior tenía un selector de orden.
-3. **Toggles rápidos para el resto de las columnas SI/NO.** El panel sólo
-   ofrece Presentado y Archivado; la tarjeta anterior alternaba **todas** las
-   columnas `pure_yesno`/`hybrid` (el contexto ya expone `statusHeaders`).
-4. **Alta de clientes.** `action: 'create'` sigue sin implementarse en el
-   backend; hoy devuelve `UNKNOWN_ACTION`. El botón "Nuevo cliente" existe en
-   el frente pero no persiste nada.
-5. **Dividir el contexto.** Sigue siendo un único `value` con ~50
-   dependencias, así que un guardado re-renderiza todas las pantallas. La salida
-   limpia es separar datos / filtros / escritura en tres contextos, o usar un
-   selector tipo `useSyncExternalStore`.
-6. **Cola de guardado persistente.** Si se cierra la app o vence la sesión con
-   escrituras pendientes, se pierden en silencio. Dado que se aceptó el modelo
-   de cola, merece sobrevivir al cierre.
+1. **Acciones masivas:** selección visible/múltiple, asignar, desasignar y
+   modificar cualquier estado SI/NO, con progreso y reporte de errores.
+2. **Orden manual:** selector A–Z / vencimiento conectado a `sortBy`.
+3. **Estados secundarios:** menú por fila para las columnas `pure_yesno` /
+   `hybrid`, manteniendo Presentado y Archivado como accesos directos.
+4. **Alta de clientes:** se agregó `action: 'create'` al Apps Script, con
+   validación de permisos, lock, formato/validaciones heredados y auditoría.
+
+Todavía pendiente:
+
+1. **Dividir el contexto.** Sigue siendo un único `value` con ~50
+   dependencias. Conviene abordarlo como refactor aislado, con pruebas de
+   regresión, separando datos / filtros / escritura o usando selectores.
+2. **Cola de guardado persistente.** No se persistió la cola completa porque
+   puede contener campos sensibles como `Clave MH`. Guardarla sin cifrado en
+   localStorage/IndexedDB comprometería la seguridad. Para Android, la opción
+   recomendada es almacenamiento cifrado respaldado por Android Keystore; en
+   web conviene mantenerla en memoria y mostrar/forzar la sincronización antes
+   de cerrar.
 
 ### Fuera de este frente
 

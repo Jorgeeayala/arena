@@ -9,9 +9,8 @@ node tools/smoke/server.mjs            # http://localhost:8787, 300 filas
 VITE_BACKEND_URL=http://localhost:8787 npm run dev
 ```
 
-Responde `login`, `session`, `users`, `years`, `months`, `read` y `update`
-con datos inventados (cualquier nombre entra sin PIN como ADMINISTRADOR).
-`create` devuelve `UNKNOWN_ACTION`, igual que el backend real hoy.
+Responde `login`, `session`, `users`, `years`, `months`, `read`, `updateBatch`
+y `create` con datos inventados (cualquier nombre entra sin PIN como ADMINISTRADOR).
 
 Variables: `PORT` (8787), `ROWS` (300), `LATENCY_MS` (250).
 

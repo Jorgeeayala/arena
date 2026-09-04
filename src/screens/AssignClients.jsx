@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useClients } from '../context/ClientsContext';
 import { formatPeriodLabel } from '../utils';
+import VencimientoPill from '../components/VencimientoPill';
 import {
   ArrowLeft,
   Search,
@@ -575,7 +576,7 @@ export default function AssignClients({ onBack }) {
   };
 
   return (
-    <div className="screen wide">
+    <div className="screen wide real-exec-assign">
       <div className="screen-header">
         <motion.button
           className="back-btn"
@@ -895,19 +896,15 @@ export default function AssignClients({ onBack }) {
                   Todos
                 </button>
                 {availableVencimientos.map((day, idx) => (
-                  <button
+                  <VencimientoPill
                     key={day}
-                    className={`filter-pill filter-pill-vencimiento ${selectedVencimiento === day ? 'active' : ''}`}
+                    day={day}
+                    digit={idx}
+                    active={selectedVencimiento === day}
+                    activeClassName="active"
+                    className="filter-pill"
                     onClick={() => setSelectedVencimiento(day)}
-                    title={`Día ${day} • Terminación ${idx}`}
-                    aria-label={`Vencimiento Día ${day}, terminación ${idx}`}
-                  >
-                    {/* Decorativos: el nombre accesible del botón ya está en
-                        aria-label. La terminación queda opacity:0 (no
-                        display:none) para que el pill no cambie de tamaño. */}
-                    <span className="pill-day-label" aria-hidden="true">Día {day}</span>
-                    <span className="pill-digit-label" aria-hidden="true">{idx}</span>
-                  </button>
+                  />
                 ))}
               </div>
             </div>
