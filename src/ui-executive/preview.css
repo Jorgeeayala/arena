@@ -2101,8 +2101,18 @@
 }
 
 .real-exec-bulk-toolbar > small {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin-left: auto;
   color: var(--rx-muted);
+  font-size: var(--rx-fs-2xs);
+}
+
+.real-exec-bulk-toolbar > small button {
+  min-height: 26px;
+  padding: 0 8px;
+  color: var(--rx-red);
   font-size: var(--rx-fs-2xs);
 }
 
