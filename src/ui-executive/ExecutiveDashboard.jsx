@@ -22,6 +22,7 @@ import {
   Clock3,
   Filter,
   Loader2,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
@@ -31,6 +32,7 @@ import {
   X,
 } from 'lucide-react';
 import { useClients } from '../context/ClientsContext';
+import VencimientoPill from '../components/VencimientoPill';
 import { findClaveMarangatuColumn, formatPeriodLabel, isAffirmativeValue } from '../utils';
 import { openMarangatuLogin } from '../marangatu';
 
@@ -115,9 +117,14 @@ const ClientRow = memo(function ClientRow({
   onSelect,
   onTogglePresented,
   onToggleArchived,
+  otherStatuses,
+  onToggleOtherStatus,
+  selected,
+  onToggleSelected,
   saving,
   marangatu,
 }) {
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const clientName = row[nameKey] || 'Sin nombre';
   const assignee = String(row._assignedUser || '').trim();
 
@@ -136,7 +143,15 @@ const ClientRow = memo(function ClientRow({
         }
       }}
     >
-      <span className="real-exec-index">{String(index + 1).padStart(2, '0')}</span>
+      <label className="real-exec-row-select" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelected(row._row)}
+          aria-label={`Seleccionar ${clientName}`}
+        />
+        <span>{String(index + 1).padStart(2, '0')}</span>
+      </label>
       <span className="real-exec-client-identity">
         <span>{String(clientName).charAt(0).toUpperCase()}</span>
         <span>
@@ -181,6 +196,38 @@ const ClientRow = memo(function ClientRow({
           busy={saving}
           onToggle={onToggleArchived ? () => onToggleArchived(row, archived) : undefined}
         />
+        {otherStatuses.length > 0 && (
+          <span className="real-exec-status-menu-wrap">
+            <button
+              type="button"
+              className="real-exec-status-more"
+              aria-label="Más estados"
+              aria-expanded={statusMenuOpen}
+              title="Más estados"
+              onClick={(event) => {
+                event.stopPropagation();
+                setStatusMenuOpen((open) => !open);
+              }}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {statusMenuOpen && (
+              <span className="real-exec-status-menu" onClick={(event) => event.stopPropagation()}>
+                {otherStatuses.map(({ column, active }) => (
+                  <button
+                    key={column}
+                    type="button"
+                    disabled={saving || !onToggleOtherStatus}
+                    aria-pressed={active}
+                    onClick={() => onToggleOtherStatus(row, column, active)}
+                  >
+                    <span>{column}</span><strong>{active ? 'SÍ' : 'NO'}</strong>
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
+        )}
       </span>
       <ChevronRight className="real-exec-chevron" size={16} />
     </div>
@@ -204,6 +251,10 @@ function VirtualClientRows({
   onSelect,
   onTogglePresented,
   onToggleArchived,
+  otherStatusHeaders,
+  onToggleOtherStatus,
+  selectedRows,
+  onToggleSelected,
   savingRowSet,
 }) {
   const listRef = useRef(null);
@@ -267,6 +318,13 @@ function VirtualClientRows({
               onSelect={onSelect}
               onTogglePresented={onTogglePresented}
               onToggleArchived={onToggleArchived}
+              otherStatuses={otherStatusHeaders.map((column) => ({
+                column,
+                active: isAffirmativeValue(row[column]),
+              }))}
+              onToggleOtherStatus={onToggleOtherStatus}
+              selected={selectedRows.has(row._row)}
+              onToggleSelected={onToggleSelected}
               saving={savingRowSet.has(row._row)}
               marangatu={meta?.marangatu ?? null}
             />
@@ -375,7 +433,7 @@ const InsightsSection = memo(function InsightsSection({
 
 // Resumen por día de vencimiento. Cada celda filtra la cartera por ese
 // día, para pasar del panorama al detalle en un toque.
-const SummarySection = memo(function SummarySection({ dailySummary, selectedVencimiento, onPickDay }) {
+const SummarySection = memo(function SummarySection({ dailySummary, selectedVencimiento, onPickDay, digitByDay }) {
   if (!dailySummary.length) return null;
   return (
     <section className="real-exec-summary">
@@ -409,8 +467,15 @@ const SummarySection = memo(function SummarySection({ dailySummary, selectedVenc
               }
               onClick={() => onPickDay(isSelected ? 'todos' : key)}
             >
-              <span className="real-exec-summary-day">
-                {entry.due === null ? 'Sin fecha' : `Día ${entry.due}`}
+              <span className={`real-exec-summary-day ${entry.due === null ? '' : 'filter-pill-vencimiento'}`}>
+                {entry.due === null ? (
+                  'Sin fecha'
+                ) : (
+                  <>
+                    <span className="pill-day-label">Día {entry.due}</span>
+                    <span className="pill-digit-label" aria-hidden="true">{digitByDay.get(String(entry.due)) ?? '—'}</span>
+                  </>
+                )}
               </span>
               <span className="real-exec-summary-count">
                 <strong>{entry.presented}</strong>/{entry.total}
@@ -485,7 +550,7 @@ function DashboardSkeleton() {
 }
 
 const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
-  { onSelect, onNewClient, readOnly = false },
+  { onSelect, onNewClient, readOnly = false, section = 'all', onGoToClients, withDesktopSidebar = false },
   ref
 ) {
   const {
@@ -507,6 +572,9 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
     presentadoPorCol,
     archivadoCol,
     archivadoPorCol,
+    encargadoCol,
+    statusHeaders,
+    canAssignClients,
     availableVencimientos,
     query,
     setQuery,
@@ -516,6 +584,8 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
     setSelectedStatus,
     selectedAssignee,
     setSelectedAssignee,
+    sortBy,
+    setSortBy,
     activeFilterCount,
     hasActiveFilters,
     clearFilters,
@@ -529,6 +599,11 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [quickFilter, setQuickFilter] = useState('all');
+  const [selectedRows, setSelectedRows] = useState(() => new Set());
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [bulkStatusColumn, setBulkStatusColumn] = useState('');
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState('');
   const clientSectionRef = useRef(null);
 
   // El input de búsqueda escribe en su propio estado y recién después
@@ -611,6 +686,14 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   // columna: si no existe, el estado se muestra como indicador y listo.
   const canEditStatus = !readOnly && Boolean(presentadoCol);
   const canEditArchived = !readOnly && Boolean(archivadoCol);
+  const otherStatusHeaders = useMemo(
+    () => statusHeaders.filter((column) => column !== presentadoCol && column !== archivadoCol),
+    [archivadoCol, presentadoCol, statusHeaders]
+  );
+  const handleToggleOtherStatus = useCallback(
+    (row, column, active) => toggleStatus(row, column, null, active),
+    [toggleStatus]
+  );
 
   useImperativeHandle(ref, () => ({ refresh }), [refresh]);
 
@@ -681,6 +764,11 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   // ver, de un vistazo, cuántos clientes vencen cada día y cuántos de esos
   // ya están presentados: es la lectura que usa el estudio para saber
   // dónde se está por atrasar.
+  const vencimientoDigits = useMemo(
+    () => new Map(availableVencimientos.map((day, digit) => [String(day), digit])),
+    [availableVencimientos]
+  );
+
   const dailySummary = useMemo(() => {
     if (!vencimientoKey) return [];
     const totals = new Map();
@@ -733,12 +821,14 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
     });
 
     return rows.sort((left, right) => {
-      const dueDifference =
-        (rowMeta.get(left._row)?.due ?? Infinity) - (rowMeta.get(right._row)?.due ?? Infinity);
-      if (dueDifference !== 0) return dueDifference;
+      if (sortBy === 'vencimiento') {
+        const dueDifference =
+          (rowMeta.get(left._row)?.due ?? Infinity) - (rowMeta.get(right._row)?.due ?? Infinity);
+        if (dueDifference !== 0) return dueDifference;
+      }
       return collator.compare(String(left[nameKey] || ''), String(right[nameKey] || ''));
     });
-  }, [applySharedFilters, assignedRows, collator, nameKey, quickFilter, rowMeta, user]);
+  }, [applySharedFilters, assignedRows, collator, nameKey, quickFilter, rowMeta, sortBy, user]);
 
   // La lista se dibuja con el resultado "diferido": mientras se tipea, React
   // prioriza pintar el texto del input y actualiza la tabla enseguida
@@ -754,17 +844,82 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
 
   const showPendingClients = useCallback(() => {
     setQuickFilter('pending');
+    onGoToClients?.();
     scrollToClients();
-  }, [scrollToClients]);
+  }, [onGoToClients, scrollToClients]);
 
   const pickSummaryDay = useCallback(
     (key) => {
       setSelectedVencimiento(key);
       setQuickFilter('all');
+      onGoToClients?.();
       scrollToClients();
     },
-    [setSelectedVencimiento, scrollToClients]
+    [onGoToClients, setSelectedVencimiento, scrollToClients]
   );
+
+  const showStats = section === 'all' || section === 'stats';
+  const showClients = section === 'all' || section === 'clients';
+
+  const toggleSelectedRow = useCallback((rowNumber) => {
+    setSelectedRows((current) => {
+      const next = new Set(current);
+      if (next.has(rowNumber)) next.delete(rowNumber);
+      else next.add(rowNumber);
+      return next;
+    });
+  }, []);
+
+  const visibleRowNumbers = useMemo(
+    () => deferredRows.map((row) => row._row),
+    [deferredRows]
+  );
+  const allVisibleSelected =
+    visibleRowNumbers.length > 0 && visibleRowNumbers.every((rowNumber) => selectedRows.has(rowNumber));
+
+  const toggleAllVisible = useCallback(() => {
+    setSelectedRows((current) => {
+      const next = new Set(current);
+      const shouldSelect = !visibleRowNumbers.every((rowNumber) => next.has(rowNumber));
+      visibleRowNumbers.forEach((rowNumber) => {
+        if (shouldSelect) next.add(rowNumber);
+        else next.delete(rowNumber);
+      });
+      return next;
+    });
+  }, [visibleRowNumbers]);
+
+  const runBulkUpdate = useCallback(async (makeUpdates) => {
+    const targets = assignedRows.filter((row) => selectedRows.has(row._row));
+    if (!targets.length || bulkRunning) return;
+    setBulkRunning(true);
+    setBulkNotice(`Guardando 0 de ${targets.length}…`);
+    let completed = 0;
+    let failed = 0;
+    await Promise.all(targets.map(async (row) => {
+      try {
+        await saveRowUpdates(row._row, makeUpdates(row));
+      } catch {
+        failed += 1;
+      } finally {
+        completed += 1;
+        setBulkNotice(`Guardando ${completed} de ${targets.length}…`);
+      }
+    }));
+    setBulkRunning(false);
+    setBulkNotice(failed ? `${targets.length - failed} guardados · ${failed} con error` : `${targets.length} clientes actualizados`);
+    if (!failed) setSelectedRows(new Set());
+  }, [assignedRows, bulkRunning, saveRowUpdates, selectedRows]);
+
+  const applyBulkAssignee = useCallback(() => {
+    if (!encargadoCol || !bulkAssignee) return;
+    runBulkUpdate(() => ({ [encargadoCol]: bulkAssignee === '__unassign__' ? '' : bulkAssignee }));
+  }, [bulkAssignee, encargadoCol, runBulkUpdate]);
+
+  const applyBulkStatus = useCallback((value) => {
+    if (!bulkStatusColumn) return;
+    runBulkUpdate(() => ({ [bulkStatusColumn]: value }));
+  }, [bulkStatusColumn, runBulkUpdate]);
 
   // `loading` es sólo la primera carga del período: ahí va el esqueleto.
   // Las recargas (`refreshing`) mantienen el panel en pantalla.
@@ -784,7 +939,7 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   }
 
   return (
-    <main className="real-exec-screen">
+    <main className={`real-exec-screen ${withDesktopSidebar ? 'has-desktop-sidebar' : ''}`}>
       {refreshing && (
         <div className="real-exec-refresh-notice" role="status">
           <RefreshCw className="real-exec-spin" size={13} />
@@ -801,33 +956,38 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
         </div>
       )}
 
-      <HeroSection
-        metrics={metrics}
-        completion={completion}
-        month={month}
-        year={year}
-        onShowPending={showPendingClients}
-      />
+      {showStats && (
+        <>
+          <HeroSection
+            metrics={metrics}
+            completion={completion}
+            month={month}
+            year={year}
+            onShowPending={showPendingClients}
+          />
 
-      <MetricsSection metrics={metrics} />
+          <MetricsSection metrics={metrics} />
 
-      <InsightsSection
-        priorityRows={priorityRows}
-        rowMeta={rowMeta}
-        workload={workload}
-        total={metrics.total}
-        nameKey={nameKey}
-        rucKey={rucKey}
-        onSelect={onSelect}
-      />
+          <InsightsSection
+            priorityRows={priorityRows}
+            rowMeta={rowMeta}
+            workload={workload}
+            total={metrics.total}
+            nameKey={nameKey}
+            rucKey={rucKey}
+            onSelect={onSelect}
+          />
 
-      <SummarySection
-        dailySummary={dailySummary}
-        selectedVencimiento={selectedVencimiento}
-        onPickDay={pickSummaryDay}
-      />
+          <SummarySection
+            dailySummary={dailySummary}
+            selectedVencimiento={selectedVencimiento}
+            onPickDay={pickSummaryDay}
+            digitByDay={vencimientoDigits}
+          />
+        </>
+      )}
 
-      <section className="real-exec-clients" ref={clientSectionRef}>
+      {showClients && <section className="real-exec-clients" ref={clientSectionRef}>
         <div className="real-exec-section-heading real-exec-clients-heading">
           <div>
             <span>CARTERA ACTIVA</span>
@@ -844,6 +1004,42 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
             <small><strong>{deferredRows.length}</strong> de {metrics.total}</small>
           </div>
         </div>
+
+        {!readOnly && (
+          <div className={`real-exec-bulk-toolbar ${selectedRows.size ? 'is-active' : ''}`}>
+            <label className="real-exec-select-all">
+              <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} />
+              <span>{selectedRows.size ? `${selectedRows.size} seleccionados` : 'Seleccionar visibles'}</span>
+            </label>
+
+            {selectedRows.size > 0 && (
+              <>
+                {canAssignClients && encargadoCol && (
+                  <span className="real-exec-bulk-control">
+                    <select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} aria-label="Encargado para la selección">
+                      <option value="">Cambiar encargado…</option>
+                      <option value="__unassign__">Desasignar</option>
+                      {teamUsers.map((name) => <option key={name} value={name}>{name}</option>)}
+                    </select>
+                    <button type="button" disabled={!bulkAssignee || bulkRunning} onClick={applyBulkAssignee}>Aplicar</button>
+                  </span>
+                )}
+                {statusHeaders.length > 0 && (
+                  <span className="real-exec-bulk-control">
+                    <select value={bulkStatusColumn} onChange={(event) => setBulkStatusColumn(event.target.value)} aria-label="Estado para la selección">
+                      <option value="">Cambiar estado…</option>
+                      {statusHeaders.map((column) => <option key={column} value={column}>{column}</option>)}
+                    </select>
+                    <button type="button" disabled={!bulkStatusColumn || bulkRunning} onClick={() => applyBulkStatus('SI')}>SÍ</button>
+                    <button type="button" disabled={!bulkStatusColumn || bulkRunning} onClick={() => applyBulkStatus('NO')}>NO</button>
+                  </span>
+                )}
+                <button type="button" className="real-exec-bulk-clear" disabled={bulkRunning} onClick={() => setSelectedRows(new Set())}>Cancelar</button>
+              </>
+            )}
+            {bulkNotice && <small role="status">{bulkNotice}</small>}
+          </div>
+        )}
 
         <div className="real-exec-search-row">
           <label className="real-exec-search">
@@ -872,6 +1068,13 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
                 {filter.label}
               </button>
             ))}
+            <label className="real-exec-sort-control">
+              <span>Orden</span>
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                <option value="alpha">A–Z</option>
+                <option value="vencimiento">Vencimiento</option>
+              </select>
+            </label>
             <button
               type="button"
               className={`real-exec-more-filters ${advancedOpen ? 'is-active' : ''}`}
@@ -901,15 +1104,14 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
                   >
                     Todos
                   </button>
-                  {availableVencimientos.map((day) => (
-                    <button
+                  {availableVencimientos.map((day, digit) => (
+                    <VencimientoPill
                       key={day}
-                      type="button"
-                      className={selectedVencimiento === day ? 'is-active' : ''}
+                      day={day}
+                      digit={digit}
+                      active={selectedVencimiento === day}
                       onClick={() => setSelectedVencimiento(day)}
-                    >
-                      {/^\d+$/.test(day) ? `Día ${day}` : day}
-                    </button>
+                    />
                   ))}
                 </div>
               </div>
@@ -1003,6 +1205,10 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
               onSelect={onSelect}
               onTogglePresented={canEditStatus ? handleTogglePresented : undefined}
               onToggleArchived={canEditArchived ? handleToggleArchived : undefined}
+              otherStatusHeaders={otherStatusHeaders}
+              onToggleOtherStatus={!readOnly ? handleToggleOtherStatus : undefined}
+              selectedRows={selectedRows}
+              onToggleSelected={toggleSelectedRow}
               savingRowSet={savingRowSet}
             />
           </div>
@@ -1013,7 +1219,7 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
             <span>Probá cambiando la búsqueda o el filtro seleccionado.</span>
           </div>
         )}
-      </section>
+      </section>}
     </main>
   );
 });

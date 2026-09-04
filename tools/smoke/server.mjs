@@ -1,6 +1,6 @@
 // Backend SIMULADO del Apps Script, para probar la app sin planilla real.
 // Responde las acciones que usa src/api.js (login, session, users, years,
-// months, read, update) con datos inventados. NO implementa create.
+// months, read, update/updateBatch y create) con datos inventados.
 //
 //   node tools/smoke/server.mjs            # escucha en :8787
 //   VITE_BACKEND_URL=http://localhost:8787 npm run dev
@@ -90,6 +90,21 @@ export async function handle(body) {
       if (!row) return { ok: false, code: 'ROW_NOT_FOUND', error: 'Fila inexistente' };
       row[body.column] = body.value;
       return { ok: true };
+    }
+    case 'updateBatch': {
+      const results = (body.updates || []).map((update) => {
+        const row = getRows(update.year, update.sheet).find((item) => item._row === Number(update.row));
+        if (!row) return { row: update.row, column: update.column, ok: false, error: 'Fila inexistente' };
+        row[update.column] = update.value;
+        return { row: update.row, column: update.column, ok: true };
+      });
+      return { ok: true, results };
+    }
+    case 'create': {
+      const rows = getRows(body.year, body.sheet);
+      const nextRow = rows.reduce((maximum, row) => Math.max(maximum, row._row), 1) + 1;
+      rows.push({ ...Object.fromEntries(HEADERS.map((header) => [header, ''])), ...body.values, _row: nextRow });
+      return { ok: true, row: nextRow };
     }
     default:
       return { ok: false, code: 'UNKNOWN_ACTION', error: `Acción desconocida: ${action}` };

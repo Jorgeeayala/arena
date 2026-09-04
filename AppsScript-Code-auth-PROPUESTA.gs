@@ -1170,6 +1170,75 @@ function doPost(e) {
     }
   }
 
+  if (action === 'create') {
+    try {
+      const sheet = getMonthSheet(body.year, body.sheet);
+      if (!sheet) {
+        return errorResponse(
+          'Año/mes "' + body.year + ' / ' + body.sheet + '" no válido',
+          'SHEET_NOT_FOUND'
+        );
+      }
+      if (!body.values || typeof body.values !== 'object' || Array.isArray(body.values)) {
+        return errorResponse('Faltan los datos del cliente', 'VALUES_REQUIRED');
+      }
+
+      const headers = sheet
+        .getRange(1, 1, 1, sheet.getLastColumn())
+        .getValues()[0];
+      const rowValues = headers.map(function (header) {
+        const value = Object.prototype.hasOwnProperty.call(body.values, header)
+          ? body.values[header]
+          : '';
+        if (value !== '' && value !== null && value !== undefined) {
+          assertCanEditColumn(sessionRole, header);
+        }
+        return value === null || value === undefined ? '' : value;
+      });
+
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(30000)) {
+        return errorResponse(
+          'No se pudo obtener el lock de la hoja (30s), intentá de nuevo',
+          'SHEET_LOCK_TIMEOUT'
+        );
+      }
+
+      let newRow;
+      try {
+        newRow = Math.max(2, sheet.getLastRow() + 1);
+        const target = sheet.getRange(newRow, 1, 1, headers.length);
+        let inheritedFormulas = [];
+        // Conserva formato, validaciones y fórmulas de la fila anterior, sin
+        // copiar sus datos. R1C1 hace que las referencias relativas se ajusten
+        // a la fila nueva.
+        if (newRow > 2) {
+          const previous = sheet.getRange(newRow - 1, 1, 1, headers.length);
+          previous.copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+          target.setDataValidations(previous.getDataValidations());
+          inheritedFormulas = previous.getFormulasR1C1()[0];
+        }
+        target.setValues([rowValues]);
+        inheritedFormulas.forEach(function (formula, index) {
+          if (formula && rowValues[index] === '') {
+            target.getCell(1, index + 1).setFormulaR1C1(formula);
+          }
+        });
+        headers.forEach(function (header, index) {
+          if (rowValues[index] !== '') {
+            logChange(sessionUser, body.year, body.sheet, newRow, header, '', rowValues[index]);
+          }
+        });
+      } finally {
+        lock.releaseLock();
+      }
+
+      return jsonResponse({ ok: true, row: newRow, message: 'Cliente creado' });
+    } catch (err) {
+      return errorResponse(err.message, 'CREATE_ERROR');
+    }
+  }
+
   if (action === 'update') {
     try {
       const sheet = getMonthSheet(body.year, body.sheet);
