@@ -25,7 +25,7 @@ const itemVariants = {
   },
 };
 
-export default function NamePicker({ onPick }) {
+export default function NamePicker({ onPick, onReady }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,14 +34,18 @@ export default function NamePicker({ onPick }) {
     setLoading(true);
     setError('');
     api
-      .listUsersWithRoles()
+      .listUsers()
       .then(setUsers)
       .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        onReady?.();
+      });
   }
 
   useEffect(() => {
     loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; el reintento manual vive en el botón
   }, []);
 
   function choose(name) {

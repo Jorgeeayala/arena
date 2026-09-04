@@ -29,6 +29,10 @@ import { api } from '../api';
 import {
   pickNameColumn,
   findVencimientoColumn,
+  findRucColumn,
+  buildRowSearchIndex,
+  prepareSearchQuery,
+  scoreSearchIndex,
   findUserStampColumn,
   findEncargadoColumn,
   findPresentadoColumn,
@@ -127,11 +131,16 @@ function orderUsers(list, order) {
   return [...ordered, ...newcomers];
 }
 
-export function ClientsProvider({ user, year, month, children }) {
+export function ClientsProvider({ user, userRole, year, month, children }) {
+  const canAssignClients = userRole === 'ADMINISTRADOR' || userRole === 'SUPERUSUARIO';
+
   // --- Datos de la planilla (fuente única) -------------------------------
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
+  // `loading` es SÓLO la primera carga de un período (no hay nada para
+  // mostrar); `refreshing` es una recarga con datos ya en pantalla.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   // --- Equipo de usuarios ------------------------------------------------
@@ -142,7 +151,16 @@ export function ClientsProvider({ user, year, month, children }) {
   const [teamOrder, setTeamOrder] = useState(readSavedOrder);
   const [syncingUsers, setSyncingUsers] = useState(false);
 
-  const teamUsers = useMemo(() => orderUsers(rosterUsers, teamOrder), [rosterUsers, teamOrder]);
+  // Si `user` no está en el equipo (recién logueado con un equipo viejo en
+  // caché, o un equipo local que no lo incluye), se suma al roster para que
+  // siempre aparezca en el reparto. Se deriva con useMemo (antes se mutaba
+  // el estado durante el render y el memo de teamUsers no se enteraba).
+  const rosterWithUser = useMemo(
+    () => (user && !rosterUsers.includes(user) ? [...rosterUsers, user] : rosterUsers),
+    [rosterUsers, user]
+  );
+
+  const teamUsers = useMemo(() => orderUsers(rosterWithUser, teamOrder), [rosterWithUser, teamOrder]);
 
   // Participantes del reparto. `null` = no se definió todavía = participan
   // todos (así nadie se queda sin reparto por no haber tocado nada).
@@ -207,6 +225,9 @@ export function ClientsProvider({ user, year, month, children }) {
   // --- Indicadores de guardado por fila (visibles en cualquier pantalla) --
   const [savingRows, setSavingRows] = useState([]);
   const [savedRows, setSavedRows] = useState([]);
+  // Sets para consultar en O(1) por fila (antes era includes() por fila).
+  const savingRowSet = useMemo(() => new Set(savingRows), [savingRows]);
+  const savedRowSet = useMemo(() => new Set(savedRows), [savedRows]);
   const savedTimers = useRef(new Map());
 
   useEffect(
@@ -226,24 +247,55 @@ export function ClientsProvider({ user, year, month, children }) {
   }, [rows]);
 
   // --- Carga de datos ----------------------------------------------------
+  // Período que está en pantalla, para descartar respuestas de otro período.
+  const periodRef = useRef({ year, month });
+  periodRef.current = { year, month };
+  const hasDataRef = useRef(false);
+
+  const applySheetData = useCallback((data) => {
+    setHeaders(data.headers || []);
+    // Copia defensiva: el cache de api.js muta sus filas in-place con
+    // las actualizaciones optimistas; trabajar con copias evita que el
+    // state de React cambie "por atrás" sin disparar un re-render.
+    setRows((data.rows || []).map((r) => ({ ...r })));
+    hasDataRef.current = true;
+  }, []);
+
   const reload = useCallback(
     async (force = false) => {
-      setLoading(true);
+      // Con datos en pantalla la recarga NO desmonta la lista: se marca
+      // `refreshing` y la lista sigue visible hasta que llegan los nuevos.
+      const firstLoad = !hasDataRef.current;
+      if (firstLoad) setLoading(true);
+      else setRefreshing(true);
       setError('');
       try {
         const data = await api.readClients(year, month, force);
-        setHeaders(data.headers || []);
-        // Copia defensiva: el cache de api.js muta sus filas in-place con
-        // las actualizaciones optimistas; trabajar con copias evita que el
-        // state de React cambie "por atrás" sin disparar un re-render.
-        setRows((data.rows || []).map((r) => ({ ...r })));
+        if (periodRef.current.year !== year || periodRef.current.month !== month) return;
+        applySheetData(data);
       } catch (err) {
+        if (periodRef.current.year !== year || periodRef.current.month !== month) return;
         setError(err.message || 'No se pudo cargar la planilla');
       } finally {
-        setLoading(false);
+        if (periodRef.current.year === year && periodRef.current.month === month) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [year, month]
+    [year, month, applySheetData]
+  );
+
+  // Cuando la recarga en segundo plano de api.js trae datos nuevos, se
+  // repintan solos (antes quedaban viejos hasta apretar "Actualizar").
+  useEffect(
+    () =>
+      api.onSheetData(({ year: y, sheet, data }) => {
+        if (y === periodRef.current.year && sheet === periodRef.current.month && data) {
+          applySheetData(data);
+        }
+      }),
+    [applySheetData]
   );
 
   const syncTeamUsers = useCallback(
@@ -275,18 +327,10 @@ export function ClientsProvider({ user, year, month, children }) {
     [user]
   );
 
-  // El usuario logueado siempre forma parte del equipo.
-  useEffect(() => {
-    if (user && !rosterUsers.includes(user)) {
-      const updated = [user, ...rosterUsers];
-      setRosterUsers(updated);
-      persistTeam(updated);
-    }
-  }, [user, rosterUsers]);
-
   // --- Columnas detectadas (una sola vez, compartidas) --------------------
   const nameKey = useMemo(() => (headers.length ? pickNameColumn(headers) : null), [headers]);
   const vencimientoKey = useMemo(() => findVencimientoColumn(headers), [headers]);
+  const rucKey = useMemo(() => findRucColumn(headers), [headers]);
   const encargadoCol = useMemo(() => findEncargadoColumn(headers), [headers]);
   const presentadoPorCol = useMemo(() => findUserStampColumn(headers, 'presentado'), [headers]);
   const archivadoPorCol = useMemo(() => findUserStampColumn(headers, 'archivado'), [headers]);
@@ -374,6 +418,25 @@ export function ClientsProvider({ user, year, month, children }) {
     [vencimientoKey, repartoUsers]
   );
 
+  // Índice de búsqueda por fila (una vez por cambio de datos, no por tecla).
+  const searchIndex = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => map.set(row._row, buildRowSearchIndex(row, nameKey, rucKey)));
+    return map;
+  }, [rows, nameKey, rucKey]);
+
+  const preparedQuery = useMemo(() => prepareSearchQuery(query), [query]);
+
+  // Puntaje de una fila para la búsqueda actual (0 si no hay búsqueda).
+  const getSearchScore = useCallback(
+    (row) => {
+      if (!preparedQuery) return 0;
+      const index = searchIndex.get(row._row) || buildRowSearchIndex(row, nameKey, rucKey);
+      return scoreSearchIndex(index, preparedQuery);
+    },
+    [searchIndex, preparedQuery, nameKey, rucKey]
+  );
+
   const unassignedCount = useMemo(() => {
     if (!encargadoCol) return rows.length;
     return rows.filter((r) => !String(r[encargadoCol] || '').trim()).length;
@@ -415,11 +478,8 @@ export function ClientsProvider({ user, year, month, children }) {
     (list) => {
       let out = [...list];
 
-      if (query.trim()) {
-        const q = query.trim().toLowerCase();
-        out = out.filter((row) =>
-          Object.values(row).some((v) => String(v).toLowerCase().includes(q))
-        );
+      if (preparedQuery) {
+        out = out.filter((row) => getSearchScore(row) >= 0);
       }
 
       if (vencimientoKey && selectedVencimiento !== 'todos') {
@@ -440,7 +500,8 @@ export function ClientsProvider({ user, year, month, children }) {
       return out;
     },
     [
-      query,
+      preparedQuery,
+      getSearchScore,
       vencimientoKey,
       selectedVencimiento,
       getVencimientoDay,
@@ -471,25 +532,27 @@ export function ClientsProvider({ user, year, month, children }) {
 
   // Carga de la planilla: se dispara al montar y cada vez que cambia el
   // período (año/mes). Mientras no haya año y mes elegidos (estamos en los
-  // pickers) no se pide nada al backend.
+  // pickers) no se pide nada al backend. El contenido del período anterior se
+  // descarta cuando el año o el mes cambian a null (volver al picker): el
+  // estado deriva del período, así que se reinicia junto con la pantalla.
   useEffect(() => {
-    if (!year || !month) {
-      setHeaders([]);
-      setRows([]);
-      setError('');
-      setLoading(false);
-      return;
-    }
+    if (!year || !month) return;
     // Es otra planilla: los datos y filtros anteriores ya no aplican.
+    hasDataRef.current = false;
+    setRows([]);
     clearFilters();
     reload(false);
   }, [year, month, reload, clearFilters]);
 
-  // El equipo de usuarios no depende de la planilla, sólo del usuario.
+  // --- Equipo de usuarios no depende de la planilla, sólo del usuario -----
+  // La sincronización con Sheets arranca en el montaje con el usuario
+  // logueado. No depende del período: se hace una vez por sesión de usuario.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- primera corrida al montar
   useEffect(() => {
     if (!user) return;
     syncTeamUsers(false);
-  }, [user, syncTeamUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- corre sólo al montar / al cambiar user
+  }, [user]);
 
 
   // --- Escritura de celdas (compartida) ----------------------------------
@@ -529,8 +592,8 @@ export function ClientsProvider({ user, year, month, children }) {
   // Encola una sola celda en la cola de guardado (sin actualizar el state).
   const queueCellUpdate = useCallback(
     ({ row, column, value }) =>
-      api.updateCell({ year, sheet: month, user, row, column, value }),
-    [year, month, user]
+      api.updateCell({ year, sheet: month, row, column, value }),
+    [year, month]
   );
 
   const flushPendingSaves = useCallback(() => api.flushPendingSaves(), []);
@@ -554,7 +617,7 @@ export function ClientsProvider({ user, year, month, children }) {
       try {
         await Promise.all(
           Object.entries(updates).map(([column, value]) =>
-            api.updateCell({ year, sheet: month, user, row: rowNum, column, value })
+            api.updateCell({ year, sheet: month, row: rowNum, column, value })
           )
         );
         markRowSaved(rowNum);
@@ -564,22 +627,27 @@ export function ClientsProvider({ user, year, month, children }) {
         throw err;
       }
     },
-    [applyLocalUpdates, year, month, user]
+    [applyLocalUpdates, year, month]
   );
 
   // Atajo para la columna "Encargado" (lo que usa Asignar clientes).
   const setEncargado = useCallback(
     (rowNum, value) => {
+      if (!canAssignClients) {
+        return Promise.reject(new Error('Tu rol no permite cambiar el Encargado'));
+      }
       if (!encargadoCol) return Promise.resolve();
       return saveRowUpdates(rowNum, { [encargadoCol]: value });
     },
-    [encargadoCol, saveRowUpdates]
+    [canAssignClients, encargadoCol, saveRowUpdates]
   );
 
   const value = useMemo(
     () => ({
-      // período
+      // período y permisos derivados de la sesión
       user,
+      userRole,
+      canAssignClients,
       year,
       month,
       // datos
@@ -588,6 +656,7 @@ export function ClientsProvider({ user, year, month, children }) {
       assignedRows,
       suggestRoundRobin,
       loading,
+      refreshing,
       error,
       reload,
       // equipo
@@ -601,6 +670,7 @@ export function ClientsProvider({ user, year, month, children }) {
       // columnas detectadas
       nameKey,
       vencimientoKey,
+      rucKey,
       encargadoCol,
       presentadoCol,
       archivadoCol,
@@ -623,6 +693,7 @@ export function ClientsProvider({ user, year, month, children }) {
       sortBy,
       setSortBy,
       applySharedFilters,
+      getSearchScore,
       matchesAssignee,
       isRowPresentado,
       activeFilterCount,
@@ -631,6 +702,8 @@ export function ClientsProvider({ user, year, month, children }) {
       // escritura
       savingRows,
       savedRows,
+      savingRowSet,
+      savedRowSet,
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,
@@ -640,6 +713,8 @@ export function ClientsProvider({ user, year, month, children }) {
     }),
     [
       user,
+      userRole,
+      canAssignClients,
       year,
       month,
       headers,
@@ -647,6 +722,7 @@ export function ClientsProvider({ user, year, month, children }) {
       assignedRows,
       suggestRoundRobin,
       loading,
+      refreshing,
       error,
       reload,
       teamUsers,
@@ -658,6 +734,7 @@ export function ClientsProvider({ user, year, month, children }) {
       syncTeamUsers,
       nameKey,
       vencimientoKey,
+      rucKey,
       encargadoCol,
       presentadoCol,
       archivadoCol,
@@ -674,6 +751,7 @@ export function ClientsProvider({ user, year, month, children }) {
       selectedAssignee,
       sortBy,
       applySharedFilters,
+      getSearchScore,
       matchesAssignee,
       isRowPresentado,
       activeFilterCount,
@@ -681,6 +759,8 @@ export function ClientsProvider({ user, year, month, children }) {
       clearFilters,
       savingRows,
       savedRows,
+      savingRowSet,
+      savedRowSet,
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,
@@ -693,6 +773,8 @@ export function ClientsProvider({ user, year, month, children }) {
   return <ClientsContext.Provider value={value}>{children}</ClientsContext.Provider>;
 }
 
+// Hook de acceso al contexto compartido de la planilla.
+// oxlint-disable-next-line react/only-export-components -- archivo de contexto: convive el Provider (componente) con useClients (hook)
 export function useClients() {
   const ctx = useContext(ClientsContext);
   if (!ctx) {

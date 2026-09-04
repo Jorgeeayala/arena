@@ -24,7 +24,7 @@ const itemVariants = {
   },
 };
 
-export default function YearPicker({ onPick }) {
+export default function YearPicker({ onPick, onReady }) {
   const [years, setYears] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,11 +36,15 @@ export default function YearPicker({ onPick }) {
       .listYears()
       .then(setYears)
       .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        onReady?.();
+      });
   }
 
   useEffect(() => {
     loadYears();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; el reintento manual vive en el botón
   }, []);
 
   return (

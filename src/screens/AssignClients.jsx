@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useClients } from '../context/ClientsContext';
@@ -19,18 +19,135 @@ import {
   UserCheck,
 } from 'lucide-react';
 
-const listVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.015 },
-  },
-};
+// Fila de la lista. Es un div memoizado sin animación: con 300 clientes,
+// una motion.div por fila con stagger y un <select> completo con todo el
+// equipo adentro eran la causa principal de lag en esta pantalla. El
+// <select> se monta SÓLO en la fila que se está editando; el resto muestra
+// el nombre del encargado como texto y un botón que abre el desplegable.
+const AssignRow = memo(function AssignRow({
+  row,
+  name,
+  currentEncargado,
+  activeAssignee,
+  isSaving,
+  justSaved,
+  editing,
+  disabled,
+  teamUsers,
+  roundRobinParticipants,
+  nonParticipants,
+  onRowClick,
+  onStartEdit,
+  onStopEdit,
+  onAssign,
+}) {
+  const isAssignedToActive =
+    activeAssignee && activeAssignee !== '__unassign__' && currentEncargado === activeAssignee;
+  const isUnassigned = !currentEncargado;
 
-const rowVariants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.15 } },
-};
+  let rowTitle = undefined;
+  if (activeAssignee === '__unassign__') {
+    rowTitle = currentEncargado ? 'Tocá para desasignar' : 'Sin asignar';
+  } else if (activeAssignee) {
+    rowTitle = isAssignedToActive
+      ? `Asignado a ${activeAssignee} (tocá para despintar / desasignar)`
+      : `Tocá para asignar a ${activeAssignee}`;
+  }
+
+  const selectRef = useRef(null);
+  useEffect(() => {
+    if (editing && selectRef.current) selectRef.current.focus();
+  }, [editing]);
+
+  return (
+    <div
+      className={`assign-row ${activeAssignee ? 'assign-row-quick' : ''} ${
+        isAssignedToActive ? 'assign-row-matched' : ''
+      }`}
+      onClick={() => onRowClick(row)}
+      title={rowTitle}
+    >
+      <span className="assign-row-name">{name || 'Sin nombre'}</span>
+
+      <div className="assign-row-control">
+        {isSaving && <Loader2 size={15} className="animate-spin" />}
+        {justSaved && <Check size={15} style={{ color: 'var(--success)' }} />}
+        {isAssignedToActive && !isSaving && !justSaved && (
+          <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
+        )}
+        {editing ? (
+          /* Encargado editable cliente por cliente. Acá SÍ se puede elegir a
+             cualquiera del equipo, participe o no del reparto automático: la
+             lista de participantes acota sólo la distribución automática,
+             nunca la manual. */
+          <select
+            ref={selectRef}
+            className={`sort-select assign-row-select ${isUnassigned ? 'is-empty' : ''}`}
+            value={currentEncargado}
+            disabled={disabled}
+            // El click no debe llegar al onClick de la fila (que asigna al
+            // encargado "activo"); si no, tocar el desplegable también
+            // pintaría el cliente.
+            onClick={(e) => e.stopPropagation()}
+            onBlur={onStopEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onStopEdit();
+            }}
+            onChange={(e) => {
+              e.stopPropagation();
+              onAssign(row, e.target.value || '__unassign__');
+              onStopEdit();
+            }}
+          >
+            <option value="">Sin asignar</option>
+            {/* Si la planilla tiene un nombre que ya no está en el equipo
+                sincronizado, se muestra igual en vez de blanquearlo. */}
+            {currentEncargado && !teamUsers.includes(currentEncargado) && (
+              <option value={currentEncargado}>{currentEncargado} (fuera del equipo)</option>
+            )}
+            {roundRobinParticipants.length > 0 && (
+              <optgroup label="Participan del reparto">
+                {roundRobinParticipants.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {nonParticipants.length > 0 && (
+              <optgroup label="No participan (asignación manual)">
+                {nonParticipants.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        ) : (
+          <button
+            type="button"
+            className={`sort-select assign-row-select assign-row-encargado ${
+              isUnassigned ? 'is-empty' : ''
+            }`}
+            disabled={disabled}
+            title={
+              currentEncargado
+                ? `Encargado: ${currentEncargado} (tocá para cambiarlo)`
+                : 'Sin asignar: tocá para elegir un encargado'
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartEdit(row._row);
+            }}
+          >
+            {currentEncargado || 'Sin asignar'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export default function AssignClients({ onBack }) {
   // Todo el estado de la planilla (datos, equipo, filtros y guardado) viene
@@ -70,8 +187,9 @@ export default function AssignClients({ onBack }) {
     clearFilters,
     hasActiveFilters,
     // escritura compartida
-    savingRows,
-    savedRows,
+    savingRowSet,
+    savedRowSet,
+    getSearchScore,
     setEncargado,
     queueCellUpdate,
     flushPendingSaves,
@@ -86,6 +204,10 @@ export default function AssignClients({ onBack }) {
   // Modo asignación rápida / toque: elegís un usuario activo o "desasignar"
   // y vas tocando clientes para asignar o desasignar al instante sin selectores
   const [activeAssignee, setActiveAssignee] = useState(null); // string (user) | '__unassign__' | null
+  // Fila cuyo <select> de encargado está abierto (una sola a la vez).
+  const [editingRow, setEditingRow] = useState(null);
+  const startEditRow = useCallback((rowNum) => setEditingRow(rowNum), []);
+  const stopEditRow = useCallback(() => setEditingRow(null), []);
 
   // --- Orden del reparto: se cambia ARRASTRANDO los nombres ---
   //
@@ -250,8 +372,15 @@ export default function AssignClients({ onBack }) {
     // compartido): búsqueda + vencimiento + estado + encargado.
     const list = applySharedFilters(assignedRows);
 
-    // Orden: respeta la opción de orden elegida en la lista de clientes.
+    // La búsqueda prioriza Nombre/Razón social y luego RUC. Sin búsqueda,
+    // respeta la opción de orden elegida en la lista de clientes.
     return list.sort((a, b) => {
+      if (query.trim()) {
+        // Sale del índice ya armado en el contexto: nada se normaliza acá.
+        const relevance = getSearchScore(b) - getSearchScore(a);
+        if (relevance !== 0) return relevance;
+      }
+
       if (sortBy === 'vencimiento' && vencimientoKey) {
         const numA = parseInt(getVencimientoDay(a), 10);
         const numB = parseInt(getVencimientoDay(b), 10);
@@ -264,7 +393,7 @@ export default function AssignClients({ onBack }) {
         sensitivity: 'base',
       });
     });
-  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, getVencimientoDay, nameKey]);
+  }, [applySharedFilters, assignedRows, sortBy, vencimientoKey, getVencimientoDay, nameKey, query, getSearchScore]);
 
   // Vista agrupada por vencimiento: se arma solo cuando tiene sentido
   // verla (viendo "Todos los vencimientos", sin buscar nada puntual) y
@@ -312,48 +441,56 @@ export default function AssignClients({ onBack }) {
     [filteredRows, isProtectedRow]
   );
 
-  async function assignRow(row, targetUser) {
-    if (!encargadoCol) return;
-    const valueToSave = targetUser === '__unassign__' ? '' : targetUser;
-    const prevValue = row[encargadoCol] || '';
-    if (prevValue === valueToSave) return; // ya tiene ese valor
+  // Callbacks estables (useCallback) para que AssignRow, que está memoizado,
+  // no se vuelva a dibujar en cada render del padre.
+  const assignRow = useCallback(
+    async (row, targetUser) => {
+      if (!encargadoCol) return;
+      const valueToSave = targetUser === '__unassign__' ? '' : targetUser;
+      const prevValue = row[encargadoCol] || '';
+      if (prevValue === valueToSave) return; // ya tiene ese valor
 
-    setHistory((prev) => [
-      {
-        rowNum: row._row,
-        prevUser: prevValue,
-        newUser: valueToSave,
-        clientName: row[nameKey] || 'Cliente',
-      },
-      ...prev.slice(0, 30), // guardar hasta 30 acciones en historial
-    ]);
+      setHistory((prev) => [
+        {
+          rowNum: row._row,
+          prevUser: prevValue,
+          newUser: valueToSave,
+          clientName: row[nameKey] || 'Cliente',
+        },
+        ...prev.slice(0, 30), // guardar hasta 30 acciones en historial
+      ]);
 
-    try {
-      // setEncargado pinta el cambio al instante en el estado compartido
-      // (se ve también en la lista de clientes) y revierte si falla.
-      await setEncargado(row._row, valueToSave);
-    } catch (err) {
-      setHistory((prev) => prev.filter((h) => h.rowNum !== row._row || h.newUser !== valueToSave));
-      setActionError(err.message || 'No se pudo guardar la asignación');
-    }
-  }
-
-  function handleRowClick(row) {
-    if (!activeAssignee || !encargadoCol) return;
-    const currentVal = row[encargadoCol] || '';
-    if (activeAssignee === '__unassign__') {
-      if (currentVal) {
-        assignRow(row, '__unassign__');
+      try {
+        // setEncargado pinta el cambio al instante en el estado compartido
+        // (se ve también en la lista de clientes) y revierte si falla.
+        await setEncargado(row._row, valueToSave);
+      } catch (err) {
+        setHistory((prev) => prev.filter((h) => h.rowNum !== row._row || h.newUser !== valueToSave));
+        setActionError(err.message || 'No se pudo guardar la asignación');
       }
-    } else {
-      // Toggle: si ya estaba asignado a este usuario, al volver a tocarlo se despinta y desasigna
-      if (currentVal === activeAssignee) {
-        assignRow(row, '__unassign__');
+    },
+    [encargadoCol, nameKey, setEncargado]
+  );
+
+  const handleRowClick = useCallback(
+    (row) => {
+      if (!activeAssignee || !encargadoCol) return;
+      const currentVal = row[encargadoCol] || '';
+      if (activeAssignee === '__unassign__') {
+        if (currentVal) {
+          assignRow(row, '__unassign__');
+        }
       } else {
-        assignRow(row, activeAssignee);
+        // Toggle: si ya estaba asignado a este usuario, al volver a tocarlo se despinta y desasigna
+        if (currentVal === activeAssignee) {
+          assignRow(row, '__unassign__');
+        } else {
+          assignRow(row, activeAssignee);
+        }
       }
-    }
-  }
+    },
+    [activeAssignee, encargadoCol, assignRow]
+  );
 
   async function undoLastAction() {
     if (!history.length || undoing || !encargadoCol) return;
@@ -864,100 +1001,26 @@ export default function AssignClients({ onBack }) {
           </div>
 
           {(() => {
-            const renderRow = (row) => {
-              const currentEncargado = String(row[encargadoCol] || '').trim();
-              const isAssignedToActive =
-                activeAssignee &&
-                activeAssignee !== '__unassign__' &&
-                currentEncargado === activeAssignee;
-              const isUnassigned = !currentEncargado;
-              const isSaving = savingRows.includes(row._row);
-              const justSaved = savedRows.includes(row._row);
-
-              let rowTitle = undefined;
-              if (activeAssignee === '__unassign__') {
-                rowTitle = currentEncargado ? 'Tocá para desasignar' : 'Sin asignar';
-              } else if (activeAssignee) {
-                rowTitle = isAssignedToActive
-                  ? `Asignado a ${activeAssignee} (tocá para despintar / desasignar)`
-                  : `Tocá para asignar a ${activeAssignee}`;
-              }
-
-              return (
-                <motion.div
-                  key={row._row}
-                  className={`assign-row ${activeAssignee ? 'assign-row-quick' : ''} ${
-                    isAssignedToActive ? 'assign-row-matched' : ''
-                  }`}
-                  variants={rowVariants}
-                  onClick={() => handleRowClick(row)}
-                  whileTap={activeAssignee ? { scale: 0.98 } : undefined}
-                  title={rowTitle}
-                >
-                  <span className="assign-row-name">{row[nameKey] || 'Sin nombre'}</span>
-
-                  <div className="assign-row-control">
-                    {isSaving && <Loader2 size={15} className="animate-spin" />}
-                    {justSaved && <Check size={15} style={{ color: 'var(--success)' }} />}
-                    {isAssignedToActive && !isSaving && !justSaved && (
-                      <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
-                    )}
-                    {/* Encargado editable cliente por cliente. Acá SÍ se puede
-                        elegir a cualquiera del equipo, participe o no del
-                        reparto automático: la lista de participantes acota
-                        sólo la distribución automática, nunca la manual.
-                        Los optgroup separan unos de otros para que se vea a
-                        quién se le está dando trabajo "fuera de reparto". */}
-                    <select
-                      className={`sort-select assign-row-select ${isUnassigned ? 'is-empty' : ''}`}
-                      value={currentEncargado}
-                      disabled={!encargadoCol}
-                      title={
-                        currentEncargado
-                          ? `Encargado: ${currentEncargado} (cambialo por quien quieras del equipo)`
-                          : 'Sin asignar: elegí un encargado'
-                      }
-                      // El click no debe llegar al onClick de la fila (que
-                      // asigna al encargado "activo"); si no, tocar el
-                      // desplegable también pintaría el cliente.
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        assignRow(row, e.target.value || '__unassign__');
-                      }}
-                    >
-                      <option value="">Sin asignar</option>
-                      {/* Si la planilla tiene un nombre que ya no está en el
-                          equipo sincronizado, se muestra igual en vez de
-                          blanquearlo: no se inventan ni se pierden datos. */}
-                      {currentEncargado && !teamUsers.includes(currentEncargado) && (
-                        <option value={currentEncargado}>
-                          {currentEncargado} (fuera del equipo)
-                        </option>
-                      )}
-                      {roundRobinParticipants.length > 0 && (
-                        <optgroup label="Participan del reparto">
-                          {roundRobinParticipants.map((u) => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {nonParticipants.length > 0 && (
-                        <optgroup label="No participan (asignación manual)">
-                          {nonParticipants.map((u) => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                  </div>
-                </motion.div>
-              );
-            };
+            const renderRow = (row) => (
+              <AssignRow
+                key={row._row}
+                row={row}
+                name={row[nameKey]}
+                currentEncargado={String(row[encargadoCol] || '').trim()}
+                activeAssignee={activeAssignee}
+                isSaving={savingRowSet.has(row._row)}
+                justSaved={savedRowSet.has(row._row)}
+                editing={editingRow === row._row}
+                disabled={!encargadoCol}
+                teamUsers={teamUsers}
+                roundRobinParticipants={roundRobinParticipants}
+                nonParticipants={nonParticipants}
+                onRowClick={handleRowClick}
+                onStartEdit={startEditRow}
+                onStopEdit={stopEditRow}
+                onAssign={assignRow}
+              />
+            );
 
             if (groupedByVencimiento) {
               return groupedByVencimiento.map((group) => (
@@ -969,23 +1032,12 @@ export default function AssignClients({ onBack }) {
                     </span>
                     <span className="assign-group-count">{group.rows.length}</span>
                   </div>
-                  <motion.div
-                    className="assign-list"
-                    variants={listVariants}
-                    initial="hidden"
-                    animate="visible"
-                  >
-                    {group.rows.map(renderRow)}
-                  </motion.div>
+                  <div className="assign-list">{group.rows.map(renderRow)}</div>
                 </div>
               ));
             }
 
-            return (
-              <motion.div className="assign-list" variants={listVariants} initial="hidden" animate="visible">
-                {filteredRows.map(renderRow)}
-              </motion.div>
-            );
+            return <div className="assign-list">{filteredRows.map(renderRow)}</div>;
           })()}
         </>
       )}

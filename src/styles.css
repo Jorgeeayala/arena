@@ -38,7 +38,18 @@
   --shadow-lg: 0 10px 25px -3px rgba(15, 23, 42, 0.15), 0 4px 10px -2px rgba(15, 23, 42, 0.08);
 
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Preferencia global de tamaño de texto (Configuración → Tamaño de
+     texto). App.jsx escribe data-font-scale en <html> y persiste la
+     elección; los tokens tipográficos del tema ejecutivo se multiplican
+     por este factor. "Normal" es el tamaño de referencia del diseño. */
+  --ui-font-scale: 1;
 }
+
+html[data-font-scale="compacto"] { --ui-font-scale: 0.92; }
+html[data-font-scale="normal"] { --ui-font-scale: 1; }
+html[data-font-scale="grande"] { --ui-font-scale: 1.12; }
+html[data-font-scale="extra"] { --ui-font-scale: 1.25; }
 
 [data-theme="dark"] {
   --bg-app: #0f172a;
@@ -108,8 +119,8 @@ body {
   flex-direction: column;
 }
 
-/* Splash de arranque (logo MJ Estudio Contable). Fondo negro a propósito:
-   el logo está diseñado sobre negro y así no queda un recuadro al cargar. */
+/* Splash de arranque (logo MJ Estudio Contable). El fondo oscuro
+   semitransparente deja entrever la app sin competir con el loader. */
 .splash-overlay {
   position: fixed;
   inset: 0;
@@ -118,7 +129,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #000000;
+  background: rgba(0, 0, 0, 0.8);
   color: #f8fafc;
   padding: 24px 24px calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
@@ -141,21 +152,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: splashLogoFade 0.28s ease-out both;
 }
 
+/* Glow estático: conserva profundidad sin recalcular un blur grande en cada
+   frame, algo especialmente costoso en WebView y equipos con GPU modesta. */
 .splash-logo-glow {
   position: absolute;
-  inset: 14%;
+  inset: 9%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(26, 155, 184, 0.42) 0%, transparent 72%);
-  filter: blur(22px);
+  background: radial-gradient(circle, rgba(26, 155, 184, 0.32) 0%, transparent 70%);
   pointer-events: none;
-  animation: splashGlowPulse 2.4s ease-in-out infinite;
 }
 
-@keyframes splashGlowPulse {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.1); }
+@keyframes splashLogoFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .splash-logo {
@@ -189,29 +201,17 @@ body {
 }
 
 .splash-progress-fill {
+  width: 42%;
   height: 100%;
   border-radius: 10px;
-  background: linear-gradient(90deg, #1d4ed8 0%, #0ea5b7 100%);
+  background: linear-gradient(90deg, #1d4ed8 0%, #38bdf8 55%, #0ea5b7 100%);
+  animation: splashProgress 1.05s ease-in-out infinite;
+  will-change: transform;
 }
 
-.splash-progress-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 8px;
-}
-
-.splash-progress-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.splash-progress-pct {
-  color: #38bdf8;
-  font-variant-numeric: tabular-nums;
+@keyframes splashProgress {
+  from { transform: translate3d(-115%, 0, 0); }
+  to { transform: translate3d(340%, 0, 0); }
 }
 
 .app-navbar {
@@ -278,27 +278,6 @@ body {
   gap: 8px;
 }
 
-.theme-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-light);
-  background-color: var(--bg-card);
-  color: var(--text-main);
-  cursor: pointer;
-  transition: background-color 0.1s ease, border-color 0.1s ease, transform 0.1s ease, color 0.1s ease;
-}
-
-.theme-toggle-btn:hover {
-  background-color: var(--bg-card-hover);
-  border-color: var(--primary-border);
-  color: var(--primary);
-  transform: scale(1.05);
-}
-
 .pill-btn {
   display: flex;
   align-items: center;
@@ -324,23 +303,6 @@ body {
   background-color: var(--primary-light);
   color: var(--primary);
   border-color: var(--primary-border);
-}
-
-.user-avatar-btn,
-.user-avatar-badge-static {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px 4px 6px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-light);
-  background-color: var(--bg-card);
-  user-select: none;
-}
-
-.user-avatar-btn:hover {
-  border-color: #cbd5e1;
-  box-shadow: var(--shadow-sm);
 }
 
 .avatar-badge {
@@ -609,6 +571,190 @@ body {
   transform: translateY(0);
 }
 
+/* Autenticación individual */
+.auth-test-banner {
+  position: sticky;
+  top: 61px;
+  z-index: 39;
+  width: 100%;
+  padding: 7px 16px;
+  background-color: #fef3c7;
+  border-bottom: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+[data-theme="dark"] .auth-test-banner {
+  background-color: #78350f;
+  border-bottom-color: #f59e0b;
+  color: #fef3c7;
+}
+
+.pin-change-notice {
+  width: 100%;
+  padding: 7px 16px;
+  background-color: #dcfce7;
+  border-bottom: 1px solid #86efac;
+  color: #14532d;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+[data-theme="dark"] .pin-change-notice {
+  background-color: #14532d;
+  border-bottom-color: #22c55e;
+  color: #dcfce7;
+}
+
+.auth-screen {
+  width: 100%;
+}
+
+.auth-card {
+  width: min(100%, 420px);
+  margin: 0 auto;
+}
+
+.auth-icon-box {
+  color: var(--primary);
+}
+
+.auth-user-label strong {
+  color: var(--text-main);
+}
+
+.auth-setup-copy {
+  max-width: 320px;
+  margin: -4px auto 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auth-checking-copy {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.auth-pin-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.auth-error-banner {
+  margin-bottom: 4px;
+  text-align: left;
+}
+
+.auth-pin-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.auth-pin-input {
+  width: 100%;
+  height: 54px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  outline: none;
+  background-color: var(--bg-input);
+  color: var(--text-main);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 14px;
+  text-align: center;
+  text-indent: 14px;
+}
+
+.auth-input-icon-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.auth-input-icon-wrap > svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  z-index: 1;
+  color: var(--text-subtle);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.auth-pin-input-with-icon {
+  padding-right: 42px;
+  padding-left: 42px;
+}
+
+.auth-pin-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.auth-pin-input:disabled {
+  opacity: 0.65;
+}
+
+.auth-pin-help {
+  min-height: 18px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  text-align: left;
+}
+
+.auth-submit-btn {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 2px;
+}
+
+.auth-change-user {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auth-change-user:hover {
+  color: var(--primary);
+}
+
+.auth-change-user:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.field-readonly-value {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 /* Skeleton Loading State */
 .skeleton-container {
   display: flex;
@@ -640,23 +786,6 @@ body {
   gap: 12px;
 }
 
-.screen-title-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.screen-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-main);
-  letter-spacing: -0.02em;
-}
-
-.screen-subtitle {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
 .back-btn {
   display: inline-flex;
   align-items: center;
@@ -669,19 +798,12 @@ body {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
 .back-btn:hover {
   background-color: var(--bg-card-hover);
   color: var(--text-main);
-}
-
-/* Action Bar & Search */
-.list-actions {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
 }
 
 .search-wrapper {
@@ -709,28 +831,13 @@ body {
   background-color: var(--bg-card);
   color: var(--text-main);
   outline: none;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
   box-shadow: var(--shadow-sm);
 }
 
 .search-input:focus {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-}
-
-.clear-search-btn {
-  position: absolute;
-  right: 10px;
-  background: none;
-  border: none;
-  color: var(--text-subtle);
-  cursor: pointer;
-  padding: 2px;
-  border-radius: var(--radius-full);
-}
-
-.clear-search-btn:hover {
-  color: var(--text-main);
 }
 
 .btn-primary {
@@ -747,7 +854,7 @@ body {
   color: white;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
   white-space: nowrap;
 }
 
@@ -760,15 +867,6 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
-}
-
-/* Modificador para el botón "Sincronizar usuarios": texto y gap un poco
-   más compactos para que entre en una sola línea incluso en modales
-   angostos, en vez de envolver a una segunda línea. */
-.btn-sync-users {
-  gap: 6px;
-  font-size: 13px;
-  white-space: nowrap;
 }
 
 /* Rotación típica de "sincronizando" para el ícono de refresh. La
@@ -787,48 +885,6 @@ body {
   }
 }
 
-/* --- Botón "Filtros" (disparador del bottom-sheet en mobile) ---
-   Oculto por defecto: en desktop los filtros ya están siempre visibles
-   debajo, así que este botón no tiene motivo para existir ahí. El media
-   query de mobile (más abajo) lo pone en display:inline-flex. Esta regla
-   TIENE que ir antes que esa, o la pisa. */
-.mobile-filters-trigger {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  padding: 0 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-muted);
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-/* Filter Bar & Quick Action Controls. Estas reglas base (desktop) TIENEN
-   que ir antes que la @media (max-width: 640px) de más abajo, porque esa
-   media query redeclara las mismas propiedades (display, gap,
-   border-radius, padding, margin-bottom) para el modo bottom-sheet de
-   mobile. Con la misma especificidad, en un empate gana la que aparece
-   después en el archivo -- así que si esta iba después (como estaba
-   antes), pisaba SIEMPRE a la versión de mobile sin importar el ancho de
-   pantalla. Eso era lo que dejaba el backdrop y el botón "X" de cerrar
-   completamente inertes en mobile: estaban en display:none pase lo que
-   pase, aunque el resto de la hoja sí se viera. */
-.filter-controls-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
-  margin-bottom: 14px;
-  box-shadow: var(--shadow-sm);
-}
-
 .filter-footer-row {
   display: flex;
   align-items: center;
@@ -845,84 +901,6 @@ body {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.filter-footer-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.mobile-filters-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-full);
-  background-color: var(--primary);
-  color: white;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-/* --- Cabecera propia del sheet (solo mobile) --- */
-.filters-sheet-header {
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 8px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.filters-sheet-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.filters-sheet-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-light);
-  background-color: var(--bg-card-hover);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-/* Backdrop del bottom-sheet: no hace nada en desktop */
-.filters-backdrop {
-  display: none;
-}
-
-/* Stats Counter Badge.
-   flex-wrap: si hay filtros activos (Encargado/Vencimiento) Y el número
-   "X de Y" es largo (ej. "395 de 395"), antes competían por el mismo
-   ancho de fila sin poder ceder -- en pantallas angostas se apretaban o,
-   por el overflow-x:hidden global, alguna etiqueta se recortaba fuera de
-   la vista. Ahora las etiquetas de filtro pasan a su propia línea si no
-   entran, sin afectar nunca al contador de la izquierda. */
-.stats-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  row-gap: 4px;
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  padding: 0 4px;
 }
 
 .stats-bar-count {
@@ -1060,6 +1038,21 @@ body {
   font-style: italic;
 }
 
+/* Versión "cerrada" del selector: un botón con el nombre del encargado.
+   El <select> real se monta sólo al tocarlo (una fila a la vez), así la
+   lista no arrastra cientos de desplegables con todo el equipo adentro. */
+.assign-row-encargado {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assign-row-encargado:not(:disabled):hover {
+  border-color: var(--primary-border);
+  background-color: var(--bg-card-hover);
+}
+
 /* Agrupación visual por vencimiento (para ver el ciclo del round-robin) */
 .assign-group {
   margin-bottom: 16px;
@@ -1096,28 +1089,6 @@ body {
      inline por tarjeta -- por eso ya no hace falta flex/gap acá. */
 }
 
-.swipe-card-wrapper {
-  position: relative;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  list-style: none;
-  touch-action: pan-y;
-}
-
-.swipe-hint-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background-color: var(--bg-card);
-  border: 1px dashed var(--border-light);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  user-select: none;
-}
-
 .client-card {
   display: flex;
   align-items: center;
@@ -1142,34 +1113,64 @@ body {
   background-color: var(--bg-card-hover);
 }
 
+.client-card-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
 .client-info {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .client-avatar-default {
   width: 42px;
   height: 42px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: white;
+  background-color: var(--bg-card-hover);
+  color: var(--text-subtle);
+  border: 1px solid var(--border-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
   flex-shrink: 0;
+}
+
+.client-card-identity {
+  min-width: 0;
+  flex: 1;
 }
 
 .client-name {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-main);
+  line-height: 1.3;
+}
+
+.client-card-assignee {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.client-card-assignee:empty {
+  display: none;
 }
 
 .client-card-chevron {
   color: var(--text-subtle);
   transition: transform 0.15s ease;
+  flex-shrink: 0;
 }
 
 .client-card:hover .client-card-chevron {
@@ -1177,33 +1178,43 @@ body {
   transform: translateX(2px);
 }
 
-/* Indicador persistente de Presentado/Archivado en la tarjeta -- chico a
-   propósito (solo un ícono, sin texto ni nombre) para no agrandar la
-   tarjeta. Gris cuando no está marcado, se colorea al instante al marcar
-   (por swipe o por click), tanto en mobile como en PC. */
-.status-dot {
+.client-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-light);
+}
+
+.client-card-due-date {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-full);
-  color: var(--text-subtle);
-  background-color: var(--bg-card-hover);
-  border: 1px solid var(--border-light);
-  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.status-dot-presentado {
-  color: var(--success);
-  background-color: var(--success-light);
-  border-color: var(--success-border);
+.client-card-due-date strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
-.status-dot-archivado {
-  color: #a78bfa;
-  background-color: rgba(167, 139, 250, 0.18);
-  border-color: rgba(167, 139, 250, 0.45);
+.client-card-statuses {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 /* Empty & Error State */
@@ -1219,13 +1230,6 @@ body {
   text-align: center;
 }
 
-.empty-icon {
-  width: 48px;
-  height: 48px;
-  color: var(--text-subtle);
-  margin-bottom: 12px;
-}
-
 .error-banner {
   display: flex;
   align-items: flex-start;
@@ -1237,6 +1241,26 @@ body {
   color: var(--danger);
   font-size: 14px;
   margin-bottom: 16px;
+}
+
+/* Recuperación ante errores de render en una pantalla puntual. */
+.screen-error-boundary {
+  width: 100%;
+}
+
+.screen-error-card {
+  width: min(100%, 420px);
+  margin: 0 auto;
+}
+
+.screen-error-card .picker-subtitle {
+  margin-bottom: 20px;
+}
+
+.screen-error-icon {
+  background-color: var(--danger-light);
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger-border);
 }
 
 /* Field Grid & Cards */
@@ -1254,7 +1278,7 @@ body {
   border-radius: var(--radius-md);
   padding: 14px;
   box-shadow: var(--shadow-sm);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
@@ -1344,7 +1368,7 @@ body {
   background-color: var(--bg-input);
   color: var(--text-main);
   outline: none;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .field-input:focus {
@@ -1367,7 +1391,7 @@ body {
   background-color: var(--primary);
   color: white;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
 .field-save-btn:hover {
@@ -1405,7 +1429,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
 .yesno-toggle-btn:hover {
@@ -1517,7 +1541,7 @@ body {
   background-color: var(--bg-card);
   color: var(--text-main);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
 .btn-secondary:hover {
@@ -1533,7 +1557,6 @@ body {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-
 
 .filter-row {
   display: flex;
@@ -1571,7 +1594,7 @@ body {
   background-color: var(--bg-card-hover);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
 .filter-pill:hover {
@@ -1670,7 +1693,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
 .reorder-mode-btn:hover {
@@ -1774,8 +1797,6 @@ body {
   transform: scale(1.05);
 }
 
-
-
 .sort-select {
   padding: 5px 12px;
   font-size: 13px;
@@ -1788,263 +1809,12 @@ body {
   cursor: pointer;
 }
 
-/* Card Quick Toggles */
-.card-quick-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-top: 8px;
-}
-
-.card-quick-actions:empty {
-  display: none;
-}
-
-.card-quick-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background-color: var(--bg-card-hover);
-  border: 1px solid var(--border-light);
-  padding: 4px 10px;
-  border-radius: var(--radius-md);
-  min-height: 32px;
-  cursor: pointer;
-  user-select: none;
-  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
-}
-
-.card-quick-toggle:active {
-  transform: scale(0.97);
-}
-
-.card-quick-toggle:hover {
-  background-color: var(--bg-card);
-  border-color: var(--border-light);
-}
-
-/* SÍ (Active) State - Crisp Green */
-.card-quick-toggle.is-active-si {
-  background-color: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.45);
-}
-
-.card-quick-toggle.is-active-si .toggle-switch-track {
-  background-color: #10b981;
-}
-
-.card-quick-toggle.is-active-si .toggle-switch-thumb {
-  transform: translateX(12px);
-  background-color: #ffffff;
-}
-
-.card-quick-toggle.is-active-si .toggle-status-text {
-  color: #059669;
-}
-
-[data-theme="dark"] .card-quick-toggle.is-active-si {
-  background-color: rgba(16, 185, 129, 0.2);
-  border-color: rgba(16, 185, 129, 0.5);
-}
-
-[data-theme="dark"] .card-quick-toggle.is-active-si .toggle-status-text {
-  color: #34d399;
-}
-
-/* NO (Inactive) State - Crisp Red Accent */
-.card-quick-toggle.is-inactive-no {
-  background-color: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.card-quick-toggle.is-inactive-no .toggle-switch-track {
-  background-color: #ef4444;
-}
-
-.card-quick-toggle.is-inactive-no .toggle-switch-thumb {
-  transform: translateX(0px);
-  background-color: #ffffff;
-}
-
-.card-quick-toggle.is-inactive-no .toggle-status-text {
-  color: #dc2626;
-}
-
-[data-theme="dark"] .card-quick-toggle.is-inactive-no {
-  background-color: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-[data-theme="dark"] .card-quick-toggle.is-inactive-no .toggle-status-text {
-  color: #f87171;
-}
-
-.toggle-switch-track {
-  width: 28px;
-  height: 16px;
-  background-color: var(--border-light);
-  border-radius: 12px;
-  position: relative;
-  transition: background-color 0.15s ease;
-  flex-shrink: 0;
-}
-
-.toggle-switch-thumb {
-  width: 12px;
-  height: 12px;
-  background-color: white;
-  border-radius: 50%;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-}
-
-.card-quick-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-main);
-  white-space: nowrap;
-}
-
-.toggle-status-text {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.3px;
-  color: var(--text-muted);
-  min-width: 18px;
-}
-
-.toggle-stamp-sub {
-  font-size: 10px;
-  font-weight: 500;
-  opacity: 0.85;
-  margin-left: 2px;
-}
-
-.card-toggle-btn.active-si {
-  background-color: var(--success);
-  color: white;
-  border-color: var(--success);
-}
-
-.card-toggle-btn.active-no {
-  background-color: var(--danger);
-  color: white;
-  border-color: var(--danger);
-}
-
-/* Screen Navigation Tabs (Lista de Clientes vs Resumen de Vencimientos) */
-.screen-nav-tabs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background-color: var(--bg-card-hover);
-  border: 1px solid var(--border-light);
-  padding: 4px;
-  border-radius: var(--radius-lg);
-  margin-bottom: 20px;
-}
-
-.screen-nav-tab {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 700;
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
-  background-color: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.screen-nav-tab:hover {
-  color: var(--text-main);
-  background-color: rgba(255, 255, 255, 0.5);
-}
-
-.screen-nav-tab.active {
-  background-color: var(--bg-card);
-  color: var(--primary);
-  box-shadow: var(--shadow-sm);
-  border-color: var(--border-light);
-}
-
 /* User Stamps & Assignment Badges on Client Card */
 .stamps-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-.assigned-user-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  font-size: 11px;
-  font-weight: 700;
-  border-radius: var(--radius-full);
-  background-color: var(--primary-light, rgba(37, 99, 235, 0.1));
-  color: var(--primary);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-}
-
-/* Mismo badge pero para clientes que todavía no tienen encargado real en
-   la planilla: neutro, para que no se confunda con una asignación. */
-.assigned-user-badge-empty {
-  background-color: var(--bg-card-hover);
-  color: var(--text-muted);
-  border: 1px dashed var(--border-light);
-  font-weight: 600;
-  font-style: italic;
-}
-
-/* Encargado editable directamente en la tarjeta de la lista. Se ve igual
-   que el badge de antes (misma píldora, mismos colores) pero es un <select>:
-   así se puede asignar a cualquiera del equipo —participe o no del reparto—
-   sin cambiar de pantalla. */
-.card-encargado-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  color: var(--primary);
-}
-
-.card-encargado-select {
-  max-width: 165px;
-  padding: 3px 9px;
-  font-size: 11px;
-  font-weight: 700;
-  border-radius: var(--radius-full);
-  background-color: var(--primary-light, rgba(37, 99, 235, 0.1));
-  color: var(--primary);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-  cursor: pointer;
-  outline: none;
-}
-
-/* Sin encargado: mismo tratamiento neutro que el badge vacío. */
-.card-encargado-select.is-empty {
-  background-color: var(--bg-card-hover);
-  color: var(--text-muted);
-  border: 1px dashed var(--border-light);
-  font-weight: 600;
-  font-style: italic;
-}
-
-.card-encargado-select:disabled {
-  opacity: 0.6;
-  cursor: progress;
 }
 
 /* Botón Marangatu en la tarjeta: logo sobre fondo blanco, como pide el
@@ -2100,88 +1870,6 @@ body {
   background-color: rgba(99, 102, 241, 0.1);
   color: #4f46e5;
   border-color: rgba(99, 102, 241, 0.25);
-}
-
-/* Summary Dashboard Panel & Table */
-.summary-panel {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-sm);
-}
-
-.summary-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.summary-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.summary-table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-}
-
-.summary-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  text-align: left;
-}
-
-.summary-table th {
-  background-color: var(--bg-card-hover);
-  color: var(--text-muted);
-  font-weight: 700;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-light);
-  white-space: nowrap;
-}
-
-.summary-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-light);
-  color: var(--text-main);
-  vertical-align: middle;
-}
-
-.summary-table tr:last-child td {
-  border-bottom: none;
-}
-
-.summary-table tr.total-row {
-  background-color: var(--bg-card-hover);
-  font-weight: 700;
-}
-
-.progress-bar-bg {
-  width: 80px;
-  height: 6px;
-  background-color: var(--border-light);
-  border-radius: 3px;
-  overflow: hidden;
-  display: inline-block;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background-color: var(--success);
-  border-radius: 3px;
 }
 
 /* Modal Overlay & Card */
@@ -2244,19 +1932,205 @@ body {
   color: var(--text-main);
 }
 
-.team-member-chip {
+.pin-change-intro {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: -4px 0 14px;
+}
+
+.settings-modal .auth-pin-input {
+  height: 48px;
+  font-size: 22px;
+  letter-spacing: 12px;
+  text-indent: 12px;
+}
+
+.settings-modal {
+  max-width: 420px;
+}
+
+.settings-title-with-back {
+  gap: 6px;
+}
+
+.settings-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.settings-back-btn:hover {
+  color: var(--text-main);
+}
+
+.settings-section {
+  padding: 14px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.settings-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.settings-section-title {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card-hover);
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-action:hover {
+  border-color: var(--primary-border);
+  background-color: var(--bg-card);
+  color: var(--primary);
+}
+
+.settings-action svg {
+  flex-shrink: 0;
+}
+
+.settings-theme-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.settings-theme-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-theme-option:hover {
+  border-color: var(--primary-border);
+  color: var(--text-main);
+}
+
+.settings-theme-option.is-active {
+  background-color: var(--primary-light);
+  border-color: var(--primary-border);
+  color: var(--primary);
+}
+
+/* Tamaño de texto: mismo lenguaje visual que el selector de tema. */
+.settings-subsection {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+
+.settings-subsection-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background-color: var(--bg-card-hover);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.settings-subsection-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-main);
   font-size: 13px;
   font-weight: 600;
 }
 
+/* Muestra en vivo el tamaño elegido, sin depender de la escala global
+   (así se puede comparar una opción con otra antes de aplicarla). */
+.settings-font-preview {
+  min-width: 42px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-weight: 700;
+  text-align: center;
+  transition: font-size 0.14s ease;
+}
+
+.settings-font-preview[data-scale="compacto"] { font-size: 12px; }
+.settings-font-preview[data-scale="normal"] { font-size: 14px; }
+.settings-font-preview[data-scale="grande"] { font-size: 16px; }
+.settings-font-preview[data-scale="extra"] { font-size: 18px; }
+
+.settings-font-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.settings-font-option {
+  min-height: 40px;
+  padding: 0 4px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.settings-font-option:hover {
+  background-color: var(--bg-card-hover);
+}
+
+.settings-font-option.is-active {
+  background-color: var(--primary-light);
+  border-color: var(--primary-border);
+  color: var(--primary);
+}
+
+.settings-note {
+  margin: 8px 2px 0;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-pin-form {
+  max-width: none;
+}
 
 @media (max-width: 640px) {
   /* Enforce 16px font-size on mobile inputs to prevent iOS automatic zoom */
@@ -2333,10 +2207,6 @@ body {
     white-space: nowrap;
   }
 
-  .user-avatar-badge-static {
-    display: none;
-  }
-
   .mobile-nav-left {
     display: flex;
   }
@@ -2351,28 +2221,6 @@ body {
 
   .screen-header {
     gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .screen-title {
-    font-size: 17px;
-  }
-
-  .screen-nav-tabs {
-    padding: 3px;
-    gap: 3px;
-    margin-bottom: 10px;
-    border-radius: var(--radius-md);
-  }
-
-  .screen-nav-tab {
-    padding: 6px 8px;
-    font-size: 12px;
-    gap: 5px;
-  }
-
-  .list-actions {
-    gap: 6px;
     margin-bottom: 10px;
   }
 
@@ -2393,14 +2241,7 @@ body {
     min-height: 38px;
   }
 
-  /* --- Filtros como bottom-sheet en mobile ---
-     .filters-panel-wrapper es el contenedor que en desktop no hace nada
-     (los filtros quedan inline, como siempre). Acá abajo se convierte en
-     una capa fija con backdrop + hoja deslizable desde abajo, para que no
-     ocupe toda la pantalla apenas se entra a la lista. */
-  .mobile-filters-trigger {
-    display: inline-flex;
-  }
+  
 
   /* Oculta info redundante en mobile (ej: el período repetido, que ya
      está en la píldora del navbar) sin tocar nada en desktop. */
@@ -2408,76 +2249,11 @@ body {
     display: none !important;
   }
 
-  .filters-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
-    z-index: 60;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
+  
 
-  .filters-panel-wrapper.is-open .filters-backdrop {
-    opacity: 1;
-    pointer-events: auto;
-  }
+  
 
-  /* Compact Filter Controls Card for Mobile.
-     El transform de abrir/cerrar y el drag-to-dismiss ahora los maneja
-     framer-motion directamente (ver el motion.div en ClientList.jsx),
-     así que acá ya NO va "transform" ni "transition: transform" -- si
-     quedan los dos (CSS + framer-motion) compitiendo por la misma
-     propiedad, el resultado es un tironeo/microcorte en vez de una
-     animación fluida. */
-  .filter-controls-card {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 61;
-    max-height: 78vh;
-    overflow-y: auto;
-    margin-bottom: 0;
-    padding: 0 14px calc(16px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-    gap: 6px;
-    border-radius: 18px 18px 0 0;
-    border-bottom: none;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
-  }
-
-  /* Barrita de agarre real (ya no es ::before): acá es donde arranca el
-     gesto de arrastre para cerrar el panel. */
-  .filter-drag-handle {
-    display: flex;
-    justify-content: center;
-    padding: 10px 0 8px;
-    margin: 0 -14px;
-    cursor: grab;
-    touch-action: none;
-  }
-
-  .filter-drag-handle-bar {
-    width: 36px;
-    height: 4px;
-    border-radius: var(--radius-full);
-    background-color: var(--border-light);
-  }
-
-  .filters-sheet-header {
-    display: flex;
-    cursor: grab;
-    touch-action: none;
-  }
-
-  /* El botón de cerrar necesita su comportamiento normal de click, sin
-     heredar el touch-action:none del header (que es solo para el
-     gesto de arrastre). */
-  .filters-sheet-close {
-    touch-action: auto;
-  }
+  
 
   .filter-row {
     flex-direction: column;
@@ -2538,6 +2314,10 @@ body {
     border-radius: var(--radius-sm);
   }
 
+  .client-card-main {
+    gap: 6px;
+  }
+
   .client-info {
     gap: 10px;
   }
@@ -2553,15 +2333,22 @@ body {
     line-height: 1.25;
   }
 
+  .client-card-assignee {
+    font-size: 11px;
+  }
+
+  .client-card-footer {
+    gap: 6px;
+    padding-top: 7px;
+  }
+
+  .client-card-due-date {
+    font-size: 11px;
+  }
+
   .client-card-chevron {
     width: 16px;
     height: 16px;
-  }
-
-  .swipe-hint-bar {
-    padding: 4px 8px;
-    font-size: 10px;
-    margin-bottom: 6px;
   }
 
   .stamps-row {
@@ -2571,37 +2358,6 @@ body {
   .user-stamp-badge {
     padding: 2px 6px;
     font-size: 10px;
-  }
-
-  .assigned-user-badge {
-    padding: 2px 6px;
-    font-size: 10px;
-  }
-
-  .card-quick-actions {
-    gap: 4px;
-    margin-top: 2px;
-  }
-
-  .card-quick-group {
-    padding: 2px 6px;
-    gap: 4px;
-    border-radius: var(--radius-sm);
-  }
-
-  .card-quick-label {
-    font-size: 10px;
-  }
-
-  .card-toggle-btn {
-    padding: 2px 6px;
-    font-size: 10px;
-    min-height: 24px;
-  }
-
-  .card-toggle-btn svg {
-    width: 10px;
-    height: 10px;
   }
 
   .hero-card {
@@ -2716,27 +2472,21 @@ body {
 }
 
 @media (max-width: 440px) {
-  .list-actions {
-    flex-direction: column;
-  }
 
   .btn-primary {
     width: 100%;
   }
 
-  /* En este ancho .list-actions pasa a columna: el botón de Filtros debe
-     acompañar ese mismo comportamiento para no quedar angosto y perdido
-     al lado de "Nuevo Cliente" apilado a ancho completo. */
-  .mobile-filters-trigger {
-    width: 100%;
-    justify-content: center;
-    height: 40px;
-  }
+  
 
   .picker-grid {
     grid-template-columns: 1fr;
   }
 }
 
-
-
+/* Hueco mientras se descarga el chunk de una pantalla lazy (Suspense).
+   Reserva alto para que el layout no salte; la pantalla trae su propio
+   esqueleto o spinner en cuanto llega. */
+.lazy-screen-fallback {
+  min-height: 40vh;
+}

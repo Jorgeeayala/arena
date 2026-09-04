@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { api } from '../api';
-import { getFieldType, getDisplayHeader, formatPeriodLabel } from '../utils';
+import {
+  getFieldType,
+  getDisplayHeader,
+  formatPeriodLabel,
+  findEncargadoColumn,
+} from '../utils';
 import {
   ArrowLeft,
   UserPlus,
@@ -33,7 +38,15 @@ const cardVariants = {
   },
 };
 
-export default function NewClient({ user, year, month, headers, onCreated, onCancel }) {
+export default function NewClient({
+  year,
+  month,
+  headers,
+  canAssignClients,
+  onCreated,
+  onCancel,
+}) {
+  const encargadoCol = findEncargadoColumn(headers);
   const [values, setValues] = useState(() => {
     const initial = {};
     headers.forEach((h) => {
@@ -48,7 +61,7 @@ export default function NewClient({ user, year, month, headers, onCreated, onCan
     setSaving(true);
     setError('');
     try {
-      await api.createClient({ year, sheet: month, user, values });
+      await api.createClient({ year, sheet: month, values });
       onCreated();
     } catch (err) {
       setError(err.message || 'Ocurrió un error al crear el cliente');
@@ -120,6 +133,7 @@ export default function NewClient({ user, year, month, headers, onCreated, onCan
         animate="visible"
       >
         {headers.map((header) => {
+          const isEncargadoField = Boolean(encargadoCol) && header === encargadoCol;
           const fieldType = getFieldType(header, values[header]);
           const val = values[header] || '';
 
@@ -134,7 +148,11 @@ export default function NewClient({ user, year, month, headers, onCreated, onCan
                 <span>{getDisplayHeader(header)}</span>
               </div>
 
-              {fieldType === 'pure_yesno' ? (
+              {isEncargadoField && !canAssignClients ? (
+                <div className="field-readonly-value" title="Solo administradores pueden asignar clientes">
+                  Sin asignar
+                </div>
+              ) : fieldType === 'pure_yesno' ? (
                 <div className="yesno-toggle-group">
                   <motion.button
                     type="button"

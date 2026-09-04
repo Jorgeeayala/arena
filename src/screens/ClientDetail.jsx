@@ -7,10 +7,13 @@ import {
   findUserStampColumn,
   findPresentadoColumn,
   findArchivadoColumn,
+  findRucColumn,
+  findClaveMarangatuColumn,
   getFieldType,
   getDisplayHeader,
   formatPeriodLabel,
 } from '../utils';
+import { openMarangatuLogin } from '../marangatu';
 import {
   ArrowLeft,
   Check,
@@ -45,7 +48,15 @@ const cardVariants = {
   },
 };
 
-export default function ClientDetail({ user, year, month, client, onBack }) {
+export default function ClientDetail({
+  user,
+  year,
+  month,
+  client,
+  onBack,
+  canAssignClients,
+  readOnlyPreview = false,
+}) {
   // El detalle también escribe sobre el estado compartido del período: así
   // lo que se edita acá ya está actualizado en la lista y en "Asignar
   // clientes" cuando se vuelve, sin recargar nada.
@@ -85,7 +96,26 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
   const presUser = presentadoPorCol && values[presentadoPorCol] ? String(values[presentadoPorCol]) : null;
   const archUser = archivadoPorCol && values[archivadoPorCol] ? String(values[archivadoPorCol]) : null;
 
+  // Credenciales de Marangatu de esta fila. Sólo se ofrece el botón cuando
+  // la planilla tiene ambas columnas y la fila tiene los dos valores: sin
+  // clave no hay nada que autocompletar. En el preview de sólo lectura no
+  // se expone.
+  const marangatuCredentials = useMemo(() => {
+    if (readOnlyPreview) return null;
+    const rucColumn = findRucColumn(fields);
+    const claveColumn = findClaveMarangatuColumn(fields);
+    if (!rucColumn || !claveColumn) return null;
+
+    const ruc = String(values[rucColumn] ?? '').trim();
+    const clave = String(values[claveColumn] ?? '').trim();
+    if (!ruc || !clave) return null;
+
+    return { user: ruc, pass: clave };
+  }, [fields, values, readOnlyPreview]);
+
   async function saveField(column, newValue) {
+    if (readOnlyPreview) return;
+
     const valToSave = newValue !== undefined ? newValue : values[column];
     
     let updates = { [column]: valToSave };
@@ -119,7 +149,6 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
         api.updateCell({
           year,
           sheet: month,
-          user,
           row: client._row,
           column,
           value: valToSave,
@@ -132,7 +161,6 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
             api.updateCell({
               year,
               sheet: month,
-              user,
               row: client._row,
               column: col,
               value: val,
@@ -167,7 +195,7 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
 
         <div className="save-all-notice">
           <FileText size={14} />
-          <span>Cambios sincronizados en vivo</span>
+          <span>{readOnlyPreview ? 'Vista de sólo lectura' : 'Cambios sincronizados en vivo'}</span>
         </div>
       </div>
 
@@ -191,6 +219,22 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
             <h2 className="client-detail-title">{clientName}</h2>
             <div className="client-detail-meta" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
               <span>Fila #{client._row} • {formatPeriodLabel(month, year)}</span>
+
+              {/* Acceso a Marangatu: abre el login de la SET y, si la
+                  extensión está instalada, lo autocompleta con el RUC y la
+                  clave de esta fila. Las credenciales viajan sólo por el
+                  canal de la extensión (nunca por la URL). */}
+              {marangatuCredentials && (
+                <button
+                  type="button"
+                  className="marangatu-btn"
+                  title={`Abrir Marangatu con el RUC ${marangatuCredentials.user}`}
+                  aria-label="Abrir Marangatu con las credenciales de este cliente"
+                  onClick={() => openMarangatuLogin(marangatuCredentials)}
+                >
+                  <img className="marangatu-logo" src="/marangatu.svg" alt="" aria-hidden="true" />
+                </button>
+              )}
 
               {(presUser || archUser) && (
                 <div className="stamps-row" style={{ marginTop: '2px' }}>
@@ -230,8 +274,12 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
         animate="visible"
       >
         {fields.map((field) => {
-          const fieldType = getFieldType(field, values[field]);
           const isEncargadoField = Boolean(encargadoCol) && field === encargadoCol;
+          // Encargado tiene su rama propia y nunca debe caer en los controles
+          // genéricos/híbridos, especialmente para el rol USUARIO.
+          const fieldType = isEncargadoField
+            ? 'assignment'
+            : getFieldType(field, values[field]);
           const isSaving = savingField === field;
           const isJustSaved = savedField === field;
           const isActive = activeField === field;
@@ -270,7 +318,11 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
                 </AnimatePresence>
               </div>
 
-              {fieldType === 'pure_yesno' ? (
+              {readOnlyPreview ? (
+                <div className="field-readonly-value" title="Preview ejecutivo de sólo lectura">
+                  {String(values[field] ?? '').trim() || '—'}
+                </div>
+              ) : fieldType === 'pure_yesno' ? (
                 <div className="yesno-toggle-group">
                   <motion.button
                     type="button"
@@ -381,7 +433,8 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
                   </div>
                 </div>
               ) : isEncargadoField ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                canAssignClients ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {/* Encargado con el equipo COMPLETO: los que participan del
                       reparto automático y los que no. Elegir a uno de afuera
                       es una asignación manual y es totalmente válida. */}
@@ -454,6 +507,11 @@ export default function ClientDetail({ user, year, month, client, onBack }) {
                     </motion.button>
                   </div>
                 </div>
+                ) : (
+                  <div className="field-readonly-value" title="Solo administradores pueden cambiar este campo">
+                    {encargadoActual || 'Sin asignar'}
+                  </div>
+                )
               ) : (
                 <div className="field-input-row">
                   <input
