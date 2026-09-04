@@ -44,6 +44,15 @@ const QUICK_FILTERS = [
   { id: 'unassigned', label: 'Sin asignar' },
 ];
 
+const BULK_CONFIRM_THRESHOLD = 20;
+const BULK_PROGRESS_STEP = 10;
+const BULK_SESSION_ERROR_CODES = new Set([
+  'SESSION_REQUIRED',
+  'SESSION_EXPIRED',
+  'SESSION_REVOKED',
+  'PIN_SETUP_REQUIRED',
+]);
+
 function isArchived(row, archivedColumn, archivedByColumn) {
   const hasArchivedValue = archivedColumn && isAffirmativeValue(row[archivedColumn]);
   const hasArchivedStamp =
@@ -496,6 +505,47 @@ const SummarySection = memo(function SummarySection({ dailySummary, selectedVenc
 
 // Esqueleto de la primera carga: misma estructura que el panel real, así el
 // contenido aparece "en su lugar" en vez de reemplazar un spinner centrado.
+function BulkConfirmDialog({ action, onCancel, onConfirm }) {
+  if (!action) return null;
+
+  return (
+    <div className="team-modal-overlay real-exec-confirm-overlay" role="presentation" onClick={onCancel}>
+      <div
+        className="team-modal real-exec-confirm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulk-confirm-title"
+        aria-describedby="bulk-confirm-description"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="team-modal-header">
+          <div className="team-modal-title" id="bulk-confirm-title">
+            <AlertCircle size={18} /> Confirmar acción masiva
+          </div>
+          <button type="button" className="team-modal-close" onClick={onCancel} aria-label="Cerrar">
+            <X size={16} />
+          </button>
+        </div>
+        <p id="bulk-confirm-description" className="real-exec-confirm-copy">
+          Vas a modificar <strong>{action.targets.length}</strong> clientes con la acción{' '}
+          <strong>{action.actionLabel}</strong>. Revisá que el filtro actual sea el correcto antes de continuar.
+        </p>
+        {action.sampleNames?.length > 0 && (
+          <ul className="real-exec-confirm-sample" aria-label="Primeros clientes afectados">
+            {action.sampleNames.map((name) => <li key={name}>{name}</li>)}
+          </ul>
+        )}
+        <div className="real-exec-confirm-actions">
+          <button type="button" className="real-exec-confirm-secondary" onClick={onCancel}>Cancelar</button>
+          <button type="button" className="real-exec-confirm-primary" onClick={onConfirm}>
+            Sí, modificar clientes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardSkeleton() {
   return (
     <main className="real-exec-screen real-exec-skeleton" aria-busy="true" aria-label="Cargando el panel">
@@ -604,6 +654,10 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   const [bulkStatusColumn, setBulkStatusColumn] = useState('');
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkNotice, setBulkNotice] = useState('');
+  const [bulkFailedRows, setBulkFailedRows] = useState([]);
+  const [bulkConfirmation, setBulkConfirmation] = useState(null);
+  const [lastBulkActionLabel, setLastBulkActionLabel] = useState('');
+  const lastBulkActionRef = useRef(null);
   const clientSectionRef = useRef(null);
 
   // El input de búsqueda escribe en su propio estado y recién después
@@ -862,6 +916,7 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   const showClients = section === 'all' || section === 'clients';
 
   const toggleSelectedRow = useCallback((rowNumber) => {
+    setBulkFailedRows([]);
     setSelectedRows((current) => {
       const next = new Set(current);
       if (next.has(rowNumber)) next.delete(rowNumber);
@@ -874,52 +929,164 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
     () => deferredRows.map((row) => row._row),
     [deferredRows]
   );
-  const allVisibleSelected =
-    visibleRowNumbers.length > 0 && visibleRowNumbers.every((rowNumber) => selectedRows.has(rowNumber));
+  const visibleRowNumberSet = useMemo(() => new Set(visibleRowNumbers), [visibleRowNumbers]);
+  const effectiveSelectedRows = useMemo(
+    () => new Set([...selectedRows].filter((rowNumber) => visibleRowNumberSet.has(rowNumber))),
+    [selectedRows, visibleRowNumberSet]
+  );
+  const visibleSelectedCount = effectiveSelectedRows.size;
+  const hiddenSelectedCount = selectedRows.size - visibleSelectedCount;
+  const allVisibleSelected = visibleRowNumbers.length > 0 && visibleSelectedCount === visibleRowNumbers.length;
 
   const toggleAllVisible = useCallback(() => {
+    setBulkFailedRows([]);
     setSelectedRows((current) => {
       const next = new Set(current);
-      const shouldSelect = !visibleRowNumbers.every((rowNumber) => next.has(rowNumber));
+      const shouldSelect = visibleSelectedCount !== visibleRowNumbers.length;
       visibleRowNumbers.forEach((rowNumber) => {
         if (shouldSelect) next.add(rowNumber);
         else next.delete(rowNumber);
       });
       return next;
     });
-  }, [visibleRowNumbers]);
+  }, [visibleRowNumbers, visibleSelectedCount]);
 
-  const runBulkUpdate = useCallback(async (makeUpdates) => {
-    const targets = assignedRows.filter((row) => selectedRows.has(row._row));
-    if (!targets.length || bulkRunning) return;
+  const executeBulkAction = useCallback(async (action) => {
+    if (!action?.targets?.length || bulkRunning) return;
+
+    lastBulkActionRef.current = {
+      actionLabel: action.actionLabel,
+      updatesByRow: action.updatesByRow,
+    };
+    setLastBulkActionLabel(action.actionLabel);
+    setBulkFailedRows([]);
+    setActionError('');
     setBulkRunning(true);
-    setBulkNotice(`Guardando 0 de ${targets.length}…`);
+    setBulkNotice(`Guardando 0 de ${action.targets.length}…`);
+
     let completed = 0;
-    let failed = 0;
-    await Promise.all(targets.map(async (row) => {
+    let sessionError = null;
+    const failures = [];
+
+    await Promise.all(action.targets.map(async (row) => {
       try {
-        await saveRowUpdates(row._row, makeUpdates(row));
-      } catch {
-        failed += 1;
+        await saveRowUpdates(row._row, action.updatesByRow.get(row._row));
+      } catch (saveError) {
+        if (BULK_SESSION_ERROR_CODES.has(saveError?.code)) {
+          sessionError = saveError;
+        } else {
+          failures.push(row._row);
+        }
       } finally {
         completed += 1;
-        setBulkNotice(`Guardando ${completed} de ${targets.length}…`);
+        if (completed === action.targets.length || completed % BULK_PROGRESS_STEP === 0) {
+          setBulkNotice(`Guardando ${completed} de ${action.targets.length}…`);
+        }
       }
     }));
+
     setBulkRunning(false);
-    setBulkNotice(failed ? `${targets.length - failed} guardados · ${failed} con error` : `${targets.length} clientes actualizados`);
-    if (!failed) setSelectedRows(new Set());
-  }, [assignedRows, bulkRunning, saveRowUpdates, selectedRows]);
+
+    if (sessionError) {
+      setBulkFailedRows([]);
+      setBulkNotice('La sesión ya no es válida. Volvé a ingresar antes de reintentar.');
+      setActionError(sessionError.message || 'Tu sesión expiró. Volvé a ingresar para guardar cambios.');
+      return;
+    }
+
+    setBulkFailedRows(failures);
+    if (failures.length) {
+      setSelectedRows(new Set(failures));
+      setBulkNotice(`${action.targets.length - failures.length} guardados · ${failures.length} con error`);
+    } else {
+      setSelectedRows(new Set());
+      setBulkNotice(`${action.targets.length} clientes actualizados`);
+    }
+  }, [bulkRunning, saveRowUpdates]);
+
+  const buildBulkAction = useCallback((makeUpdates, options = {}) => {
+    const rowNumberFilter = options.rowNumbers ? new Set(options.rowNumbers) : null;
+    const sourceRows = rowNumberFilter ? assignedRows : deferredRows;
+    const targets = sourceRows.filter((row) =>
+      rowNumberFilter ? rowNumberFilter.has(row._row) : effectiveSelectedRows.has(row._row)
+    );
+    if (!targets.length) return null;
+
+    return {
+      actionLabel: options.actionLabel || 'acción masiva',
+      targets,
+      updatesByRow: new Map(targets.map((row) => [row._row, makeUpdates(row)])),
+      sampleNames: targets.slice(0, 3).map((row) => String(row[nameKey] || `Fila ${row._row}`)),
+    };
+  }, [assignedRows, deferredRows, effectiveSelectedRows, nameKey]);
+
+  const requestBulkUpdate = useCallback((makeUpdates, options = {}) => {
+    if (bulkRunning) return;
+    const action = buildBulkAction(makeUpdates, options);
+    if (!action) return;
+
+    if (!options.skipConfirm && action.targets.length > BULK_CONFIRM_THRESHOLD) {
+      setBulkConfirmation(action);
+      return;
+    }
+
+    executeBulkAction(action);
+  }, [buildBulkAction, bulkRunning, executeBulkAction]);
+
+  const confirmBulkAction = useCallback(() => {
+    const action = bulkConfirmation;
+    setBulkConfirmation(null);
+    executeBulkAction(action);
+  }, [bulkConfirmation, executeBulkAction]);
 
   const applyBulkAssignee = useCallback(() => {
     if (!encargadoCol || !bulkAssignee) return;
-    runBulkUpdate(() => ({ [encargadoCol]: bulkAssignee === '__unassign__' ? '' : bulkAssignee }));
-  }, [bulkAssignee, encargadoCol, runBulkUpdate]);
+    const label = bulkAssignee === '__unassign__'
+      ? 'desasignar encargado'
+      : `asignar a ${bulkAssignee}`;
+    requestBulkUpdate(
+      () => ({ [encargadoCol]: bulkAssignee === '__unassign__' ? '' : bulkAssignee }),
+      { actionLabel: label }
+    );
+  }, [bulkAssignee, encargadoCol, requestBulkUpdate]);
+
+  const getBulkStatusUpdates = useCallback((column, value) => {
+    const updates = { [column]: value };
+    if (column === presentadoCol && presentadoPorCol && presentadoPorCol !== column) {
+      updates[presentadoPorCol] = value === 'SI' ? user : '';
+    }
+    if (column === archivadoCol && archivadoPorCol && archivadoPorCol !== column) {
+      updates[archivadoPorCol] = value === 'SI' ? user : '';
+    }
+    return updates;
+  }, [archivadoCol, archivadoPorCol, presentadoCol, presentadoPorCol, user]);
 
   const applyBulkStatus = useCallback((value) => {
     if (!bulkStatusColumn) return;
-    runBulkUpdate(() => ({ [bulkStatusColumn]: value }));
-  }, [bulkStatusColumn, runBulkUpdate]);
+    requestBulkUpdate(
+      () => getBulkStatusUpdates(bulkStatusColumn, value),
+      { actionLabel: `marcar ${bulkStatusColumn} = ${value}` }
+    );
+  }, [bulkStatusColumn, getBulkStatusUpdates, requestBulkUpdate]);
+
+  const retryBulkFailures = useCallback(() => {
+    const lastAction = lastBulkActionRef.current;
+    if (!lastAction || !bulkFailedRows.length || bulkRunning) return;
+    const failedSet = new Set(bulkFailedRows);
+    const targets = assignedRows.filter((row) =>
+      failedSet.has(row._row) && lastAction.updatesByRow.has(row._row)
+    );
+    if (!targets.length) {
+      setBulkNotice('Las filas fallidas ya no están disponibles para reintentar.');
+      return;
+    }
+    executeBulkAction({
+      actionLabel: `reintentar: ${lastAction.actionLabel}`,
+      targets,
+      updatesByRow: lastAction.updatesByRow,
+      sampleNames: targets.slice(0, 3).map((row) => String(row[nameKey] || `Fila ${row._row}`)),
+    });
+  }, [assignedRows, bulkFailedRows, bulkRunning, executeBulkAction, nameKey]);
 
   // `loading` es sólo la primera carga del período: ahí va el esqueleto.
   // Las recargas (`refreshing`) mantienen el panel en pantalla.
@@ -940,6 +1107,11 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
 
   return (
     <main className={`real-exec-screen ${withDesktopSidebar ? 'has-desktop-sidebar' : ''}`}>
+      <BulkConfirmDialog
+        action={bulkConfirmation}
+        onCancel={() => setBulkConfirmation(null)}
+        onConfirm={confirmBulkAction}
+      />
       {refreshing && (
         <div className="real-exec-refresh-notice" role="status">
           <RefreshCw className="real-exec-spin" size={13} />
@@ -1006,13 +1178,23 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
         </div>
 
         {!readOnly && (
-          <div className={`real-exec-bulk-toolbar ${selectedRows.size ? 'is-active' : ''}`}>
+          <div className={`real-exec-bulk-toolbar ${visibleSelectedCount ? 'is-active' : ''}`}>
             <label className="real-exec-select-all">
-              <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} />
-              <span>{selectedRows.size ? `${selectedRows.size} seleccionados` : 'Seleccionar visibles'}</span>
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                disabled={bulkRunning || !visibleRowNumbers.length}
+                onChange={toggleAllVisible}
+              />
+              <span>
+                {visibleSelectedCount
+                  ? `${visibleSelectedCount} seleccionados en el filtro actual`
+                  : `Seleccionar ${visibleRowNumbers.length} resultados filtrados`}
+                {hiddenSelectedCount > 0 ? ` · ${hiddenSelectedCount} fuera del filtro no se modificarán` : ''}
+              </span>
             </label>
 
-            {selectedRows.size > 0 && (
+            {visibleSelectedCount > 0 && (
               <>
                 {canAssignClients && encargadoCol && (
                   <span className="real-exec-bulk-control">
@@ -1034,10 +1216,37 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
                     <button type="button" disabled={!bulkStatusColumn || bulkRunning} onClick={() => applyBulkStatus('NO')}>NO</button>
                   </span>
                 )}
-                <button type="button" className="real-exec-bulk-clear" disabled={bulkRunning} onClick={() => setSelectedRows(new Set())}>Cancelar</button>
+                <button
+                  type="button"
+                  className="real-exec-bulk-clear"
+                  disabled={bulkRunning}
+                  onClick={() => {
+                    setBulkFailedRows([]);
+                    setSelectedRows(new Set());
+                  }}
+                >
+                  Cancelar
+                </button>
               </>
             )}
-            {bulkNotice && <small role="status">{bulkNotice}</small>}
+            {bulkNotice && (
+              <small role="status">
+                {bulkNotice}
+                {bulkFailedRows.length > 0 && (
+                  <>
+                    <span>Acción: {lastBulkActionLabel || 'acción masiva'}</span>
+                    <button
+                      type="button"
+                      disabled={bulkRunning}
+                      onClick={retryBulkFailures}
+                      title={`Reintentar la acción anterior: ${lastBulkActionLabel || 'acción masiva'}`}
+                    >
+                      Reintentar fallidos
+                    </button>
+                  </>
+                )}
+              </small>
+            )}
           </div>
         )}
 
