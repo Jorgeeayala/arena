@@ -2013,8 +2013,14 @@
 @media (min-width: 861px) {
   .real-exec-screen.has-desktop-sidebar,
   .real-exec-app .real-exec-assign {
-    width: min(1120px, calc(100% - 280px));
+    /* El sidebar es fijo: left 18px + width 210px = termina en 228px.
+       El contenido vive en la zona libre a su derecha: mínimo 28px de
+       aire tras el sidebar y, en ventanas anchas, queda centrado entre
+       el sidebar y el borde derecho (antes `margin: 0 auto` + margin-right
+       fijo lo empujaba contra el extremo derecho en monitores anchos). */
+    width: min(1120px, calc(100% - 284px));
     margin-right: 28px;
+    margin-left: max(256px, calc((100% - 892px) / 2));
   }
 }
 
