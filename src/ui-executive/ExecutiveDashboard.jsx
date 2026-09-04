@@ -46,6 +46,12 @@ const QUICK_FILTERS = [
 
 const BULK_CONFIRM_THRESHOLD = 20;
 const BULK_PROGRESS_STEP = 10;
+const BULK_SESSION_ERROR_CODES = new Set([
+  'SESSION_REQUIRED',
+  'SESSION_EXPIRED',
+  'SESSION_REVOKED',
+  'PIN_SETUP_REQUIRED',
+]);
 
 function isArchived(row, archivedColumn, archivedByColumn) {
   const hasArchivedValue = archivedColumn && isAffirmativeValue(row[archivedColumn]);
@@ -499,6 +505,47 @@ const SummarySection = memo(function SummarySection({ dailySummary, selectedVenc
 
 // Esqueleto de la primera carga: misma estructura que el panel real, así el
 // contenido aparece "en su lugar" en vez de reemplazar un spinner centrado.
+function BulkConfirmDialog({ action, onCancel, onConfirm }) {
+  if (!action) return null;
+
+  return (
+    <div className="team-modal-overlay real-exec-confirm-overlay" role="presentation" onClick={onCancel}>
+      <div
+        className="team-modal real-exec-confirm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulk-confirm-title"
+        aria-describedby="bulk-confirm-description"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="team-modal-header">
+          <div className="team-modal-title" id="bulk-confirm-title">
+            <AlertCircle size={18} /> Confirmar acción masiva
+          </div>
+          <button type="button" className="team-modal-close" onClick={onCancel} aria-label="Cerrar">
+            <X size={16} />
+          </button>
+        </div>
+        <p id="bulk-confirm-description" className="real-exec-confirm-copy">
+          Vas a modificar <strong>{action.targets.length}</strong> clientes con la acción{' '}
+          <strong>{action.actionLabel}</strong>. Revisá que el filtro actual sea el correcto antes de continuar.
+        </p>
+        {action.sampleNames?.length > 0 && (
+          <ul className="real-exec-confirm-sample" aria-label="Primeros clientes afectados">
+            {action.sampleNames.map((name) => <li key={name}>{name}</li>)}
+          </ul>
+        )}
+        <div className="real-exec-confirm-actions">
+          <button type="button" className="real-exec-confirm-secondary" onClick={onCancel}>Cancelar</button>
+          <button type="button" className="real-exec-confirm-primary" onClick={onConfirm}>
+            Sí, modificar clientes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardSkeleton() {
   return (
     <main className="real-exec-screen real-exec-skeleton" aria-busy="true" aria-label="Cargando el panel">
@@ -608,6 +655,8 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailedRows, setBulkFailedRows] = useState([]);
+  const [bulkConfirmation, setBulkConfirmation] = useState(null);
+  const [lastBulkActionLabel, setLastBulkActionLabel] = useState('');
   const lastBulkActionRef = useRef(null);
   const clientSectionRef = useRef(null);
 
@@ -902,59 +951,104 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
     });
   }, [visibleRowNumbers, visibleSelectedCount]);
 
-  const runBulkUpdate = useCallback(async (makeUpdates, options = {}) => {
-    const rowNumberFilter = options.rowNumbers ? new Set(options.rowNumbers) : null;
-    const sourceRows = rowNumberFilter ? assignedRows : deferredRows;
-    const targets = sourceRows.filter((row) =>
-      rowNumberFilter ? rowNumberFilter.has(row._row) : effectiveSelectedRows.has(row._row)
-    );
-    if (!targets.length || bulkRunning) return;
+  const executeBulkAction = useCallback(async (action) => {
+    if (!action?.targets?.length || bulkRunning) return;
 
-    if (!options.skipConfirm && targets.length > BULK_CONFIRM_THRESHOLD) {
-      const confirmed = typeof window === 'undefined' || window.confirm(
-        `Vas a modificar ${targets.length} clientes. ¿Querés continuar?`
-      );
-      if (!confirmed) {
-        setBulkNotice('Acción masiva cancelada.');
-        return;
-      }
-    }
-
-    lastBulkActionRef.current = { makeUpdates, rowNumbers: targets.map((row) => row._row) };
+    lastBulkActionRef.current = {
+      actionLabel: action.actionLabel,
+      updatesByRow: action.updatesByRow,
+    };
+    setLastBulkActionLabel(action.actionLabel);
     setBulkFailedRows([]);
+    setActionError('');
     setBulkRunning(true);
-    setBulkNotice(`Guardando 0 de ${targets.length}…`);
+    setBulkNotice(`Guardando 0 de ${action.targets.length}…`);
+
     let completed = 0;
+    let sessionError = null;
     const failures = [];
 
-    await Promise.all(targets.map(async (row) => {
+    await Promise.all(action.targets.map(async (row) => {
       try {
-        await saveRowUpdates(row._row, makeUpdates(row));
-      } catch {
-        failures.push(row._row);
+        await saveRowUpdates(row._row, action.updatesByRow.get(row._row));
+      } catch (saveError) {
+        if (BULK_SESSION_ERROR_CODES.has(saveError?.code)) {
+          sessionError = saveError;
+        } else {
+          failures.push(row._row);
+        }
       } finally {
         completed += 1;
-        if (completed === targets.length || completed % BULK_PROGRESS_STEP === 0) {
-          setBulkNotice(`Guardando ${completed} de ${targets.length}…`);
+        if (completed === action.targets.length || completed % BULK_PROGRESS_STEP === 0) {
+          setBulkNotice(`Guardando ${completed} de ${action.targets.length}…`);
         }
       }
     }));
 
     setBulkRunning(false);
+
+    if (sessionError) {
+      setBulkFailedRows([]);
+      setBulkNotice('La sesión ya no es válida. Volvé a ingresar antes de reintentar.');
+      setActionError(sessionError.message || 'Tu sesión expiró. Volvé a ingresar para guardar cambios.');
+      return;
+    }
+
     setBulkFailedRows(failures);
     if (failures.length) {
       setSelectedRows(new Set(failures));
-      setBulkNotice(`${targets.length - failures.length} guardados · ${failures.length} con error`);
+      setBulkNotice(`${action.targets.length - failures.length} guardados · ${failures.length} con error`);
     } else {
       setSelectedRows(new Set());
-      setBulkNotice(`${targets.length} clientes actualizados`);
+      setBulkNotice(`${action.targets.length} clientes actualizados`);
     }
-  }, [assignedRows, bulkRunning, deferredRows, effectiveSelectedRows, saveRowUpdates]);
+  }, [bulkRunning, saveRowUpdates]);
+
+  const buildBulkAction = useCallback((makeUpdates, options = {}) => {
+    const rowNumberFilter = options.rowNumbers ? new Set(options.rowNumbers) : null;
+    const sourceRows = rowNumberFilter ? assignedRows : deferredRows;
+    const targets = sourceRows.filter((row) =>
+      rowNumberFilter ? rowNumberFilter.has(row._row) : effectiveSelectedRows.has(row._row)
+    );
+    if (!targets.length) return null;
+
+    return {
+      actionLabel: options.actionLabel || 'acción masiva',
+      targets,
+      updatesByRow: new Map(targets.map((row) => [row._row, makeUpdates(row)])),
+      sampleNames: targets.slice(0, 3).map((row) => String(row[nameKey] || `Fila ${row._row}`)),
+    };
+  }, [assignedRows, deferredRows, effectiveSelectedRows, nameKey]);
+
+  const requestBulkUpdate = useCallback((makeUpdates, options = {}) => {
+    if (bulkRunning) return;
+    const action = buildBulkAction(makeUpdates, options);
+    if (!action) return;
+
+    if (!options.skipConfirm && action.targets.length > BULK_CONFIRM_THRESHOLD) {
+      setBulkConfirmation(action);
+      return;
+    }
+
+    executeBulkAction(action);
+  }, [buildBulkAction, bulkRunning, executeBulkAction]);
+
+  const confirmBulkAction = useCallback(() => {
+    const action = bulkConfirmation;
+    setBulkConfirmation(null);
+    executeBulkAction(action);
+  }, [bulkConfirmation, executeBulkAction]);
 
   const applyBulkAssignee = useCallback(() => {
     if (!encargadoCol || !bulkAssignee) return;
-    runBulkUpdate(() => ({ [encargadoCol]: bulkAssignee === '__unassign__' ? '' : bulkAssignee }));
-  }, [bulkAssignee, encargadoCol, runBulkUpdate]);
+    const label = bulkAssignee === '__unassign__'
+      ? 'desasignar encargado'
+      : `asignar a ${bulkAssignee}`;
+    requestBulkUpdate(
+      () => ({ [encargadoCol]: bulkAssignee === '__unassign__' ? '' : bulkAssignee }),
+      { actionLabel: label }
+    );
+  }, [bulkAssignee, encargadoCol, requestBulkUpdate]);
 
   const getBulkStatusUpdates = useCallback((column, value) => {
     const updates = { [column]: value };
@@ -969,14 +1063,30 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
 
   const applyBulkStatus = useCallback((value) => {
     if (!bulkStatusColumn) return;
-    runBulkUpdate(() => getBulkStatusUpdates(bulkStatusColumn, value));
-  }, [bulkStatusColumn, getBulkStatusUpdates, runBulkUpdate]);
+    requestBulkUpdate(
+      () => getBulkStatusUpdates(bulkStatusColumn, value),
+      { actionLabel: `marcar ${bulkStatusColumn} = ${value}` }
+    );
+  }, [bulkStatusColumn, getBulkStatusUpdates, requestBulkUpdate]);
 
   const retryBulkFailures = useCallback(() => {
     const lastAction = lastBulkActionRef.current;
-    if (!lastAction || !bulkFailedRows.length) return;
-    runBulkUpdate(lastAction.makeUpdates, { rowNumbers: bulkFailedRows, skipConfirm: true });
-  }, [bulkFailedRows, runBulkUpdate]);
+    if (!lastAction || !bulkFailedRows.length || bulkRunning) return;
+    const failedSet = new Set(bulkFailedRows);
+    const targets = assignedRows.filter((row) =>
+      failedSet.has(row._row) && lastAction.updatesByRow.has(row._row)
+    );
+    if (!targets.length) {
+      setBulkNotice('Las filas fallidas ya no están disponibles para reintentar.');
+      return;
+    }
+    executeBulkAction({
+      actionLabel: `reintentar: ${lastAction.actionLabel}`,
+      targets,
+      updatesByRow: lastAction.updatesByRow,
+      sampleNames: targets.slice(0, 3).map((row) => String(row[nameKey] || `Fila ${row._row}`)),
+    });
+  }, [assignedRows, bulkFailedRows, bulkRunning, executeBulkAction, nameKey]);
 
   // `loading` es sólo la primera carga del período: ahí va el esqueleto.
   // Las recargas (`refreshing`) mantienen el panel en pantalla.
@@ -997,6 +1107,11 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
 
   return (
     <main className={`real-exec-screen ${withDesktopSidebar ? 'has-desktop-sidebar' : ''}`}>
+      <BulkConfirmDialog
+        action={bulkConfirmation}
+        onCancel={() => setBulkConfirmation(null)}
+        onConfirm={confirmBulkAction}
+      />
       {refreshing && (
         <div className="real-exec-refresh-notice" role="status">
           <RefreshCw className="real-exec-spin" size={13} />
@@ -1118,9 +1233,17 @@ const ExecutiveDashboard = forwardRef(function ExecutiveDashboard(
               <small role="status">
                 {bulkNotice}
                 {bulkFailedRows.length > 0 && (
-                  <button type="button" disabled={bulkRunning} onClick={retryBulkFailures}>
-                    Reintentar fallidos
-                  </button>
+                  <>
+                    <span>Acción: {lastBulkActionLabel || 'acción masiva'}</span>
+                    <button
+                      type="button"
+                      disabled={bulkRunning}
+                      onClick={retryBulkFailures}
+                      title={`Reintentar la acción anterior: ${lastBulkActionLabel || 'acción masiva'}`}
+                    >
+                      Reintentar fallidos
+                    </button>
+                  </>
                 )}
               </small>
             )}

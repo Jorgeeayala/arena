@@ -2116,6 +2116,70 @@
   font-size: var(--rx-fs-2xs);
 }
 
+.real-exec-confirm-overlay {
+  z-index: 1400;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.real-exec-confirm-modal {
+  max-width: 440px;
+  border-color: var(--rx-line);
+  background: var(--rx-surface);
+  color: var(--rx-ink);
+  box-shadow: var(--rx-shadow-lg);
+}
+
+.real-exec-confirm-copy {
+  margin: 0;
+  color: var(--rx-subtle);
+  font-size: var(--rx-fs-sm);
+  line-height: 1.55;
+}
+
+.real-exec-confirm-copy strong {
+  color: var(--rx-ink);
+}
+
+.real-exec-confirm-sample {
+  display: grid;
+  gap: 5px;
+  margin: 14px 0 0;
+  padding: 10px 12px 10px 28px;
+  border: 1px solid var(--rx-line);
+  border-radius: 12px;
+  background: var(--rx-soft);
+  color: var(--rx-subtle);
+  font-size: var(--rx-fs-xs);
+}
+
+.real-exec-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.real-exec-confirm-actions button {
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 11px;
+  cursor: pointer;
+  font-size: var(--rx-fs-xs);
+  font-weight: 850;
+}
+
+.real-exec-confirm-secondary {
+  border: 1px solid var(--rx-line);
+  background: var(--rx-surface);
+  color: var(--rx-subtle);
+}
+
+.real-exec-confirm-primary {
+  border: 1px solid color-mix(in srgb, var(--rx-red) 35%, transparent);
+  background: var(--rx-red);
+  color: #fff;
+}
+
 .real-exec-sort-control {
   display: inline-flex;
   align-items: center;
