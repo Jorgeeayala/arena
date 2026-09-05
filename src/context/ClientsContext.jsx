@@ -604,11 +604,14 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   //
   //  - normal: marca la fila "guardando" (spinner) y revierte si falla. Lo
   //    usan los formularios, donde esperar el guardado es parte del flujo.
-  //  - background: no marca nada ni bloquea la UI; la fila sigue plenamente
-  //    usable (es lo que hacen los toggles rápidos del panel). Si el
-  //    guardado falla, revierte la celda SÓLO si todavía conserva el valor
-  //    que falló (así no pisa una corrección hecha entre medio) y avisa
-  //    lanzando el error para que la pantalla lo muestre.
+  //  - background: no marca la fila como "guardando" ni bloquea la UI; sigue
+  //    plenamente usable (toggles rápidos del panel, detalle del cliente,
+  //    asignar clientes). Cuando el lote se confirma SÍ la marca como
+  //    guardada: sin spinner de por medio, el ✓ es la única señal de que el
+  //    cambio llegó a la planilla. Si el guardado falla, revierte la celda
+  //    SÓLO si todavía conserva el valor que falló (así no pisa una
+  //    corrección hecha entre medio) y avisa lanzando el error para que la
+  //    pantalla lo muestre.
   const runRowSave = useCallback(
     async (rowNum, updates, { background = false } = {}) => {
       const target = rowsRef.current.find((r) => r._row === rowNum);
@@ -628,7 +631,10 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
             api.updateCell({ year, sheet: month, row: rowNum, column, value })
           )
         );
-        if (!background) markRowSaved(rowNum);
+        // Confirmación visible en los DOS modos: en background no hay
+        // spinner, así que el ✓ es lo único que le dice al usuario que el
+        // lote llegó a la planilla.
+        markRowSaved(rowNum);
       } catch (err) {
         setRows((prev) =>
           prev.map((r) => {
@@ -643,9 +649,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
             return next || r;
           })
         );
-        if (!background) {
-          setSavingRows((prev) => prev.filter((r) => r !== rowNum));
-        }
+        setSavingRows((prev) => prev.filter((r) => r !== rowNum));
         throw err;
       }
     },
@@ -664,16 +668,19 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
     [runRowSave]
   );
 
-  // Atajo para la columna "Encargado" (lo que usa Asignar clientes).
+  // Atajo para la columna "Encargado" (lo que usa Asignar clientes y el
+  // desplegable del detalle). Va en modo fondo: la fila se pinta al toque,
+  // sin spinner, y el ✓ aparece cuando el lote se confirma. Se conserva el
+  // chequeo de permisos por rol.
   const setEncargado = useCallback(
     (rowNum, value) => {
       if (!canAssignClients) {
         return Promise.reject(new Error('Tu rol no permite cambiar el Encargado'));
       }
       if (!encargadoCol) return Promise.resolve();
-      return saveRowUpdates(rowNum, { [encargadoCol]: value });
+      return saveRowUpdatesInBackground(rowNum, { [encargadoCol]: value });
     },
-    [canAssignClients, encargadoCol, saveRowUpdates]
+    [canAssignClients, encargadoCol, saveRowUpdatesInBackground]
   );
 
   const value = useMemo(

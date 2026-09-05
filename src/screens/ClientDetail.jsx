@@ -1,6 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { api } from '../api';
 import { useClients } from '../context/ClientsContext';
 import {
   pickNameColumn,
@@ -19,13 +18,15 @@ import {
   Check,
   Save,
   AlertCircle,
-  Loader2,
   CheckCircle2,
   XCircle,
   FileText,
   Building2,
   Archive,
 } from 'lucide-react';
+
+// Cuánto queda visible el ✓ "Guardado" después de pintar el cambio.
+const SAVED_FEEDBACK_MS = 1800;
 
 const gridVariants = {
   hidden: { opacity: 0 },
@@ -60,13 +61,22 @@ export default function ClientDetail({
   // El detalle también escribe sobre el estado compartido del período: así
   // lo que se edita acá ya está actualizado en la lista y en "Asignar
   // clientes" cuando se vuelve, sin recargar nada.
-  const { applyLocalUpdates, encargadoCol, teamUsers, repartoUsers } = useClients();
+  const { saveRowUpdatesInBackground, encargadoCol, teamUsers, repartoUsers } = useClients();
 
   const [values, setValues] = useState(client);
-  const [savingField, setSavingField] = useState(null);
   const [savedField, setSavedField] = useState(null);
   const [activeField, setActiveField] = useState(null);
   const [error, setError] = useState('');
+
+  // Timer del ✓ "Guardado". Se limpia al desmontar: si el usuario vuelve a
+  // la lista antes de que se cumpla, no queda un setState colgado.
+  const savedTimer = useRef(null);
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+    },
+    []
+  );
 
   const fields = useMemo(() => {
     // Excluye TODOS los campos internos que arrancan con "_" (no solo
@@ -113,12 +123,22 @@ export default function ClientDetail({
     return { user: ruc, pass: clave };
   }, [fields, values, readOnlyPreview]);
 
-  async function saveField(column, newValue) {
+  // Guardado fluido: el valor se pinta AL INSTANTE (formulario + estado
+  // compartido) y el ✓ "Guardado" aparece en el mismo gesto. La escritura
+  // real en la planilla queda delegada en la cola de fondo, que agrupa los
+  // cambios y los manda en lote.
+  //
+  // Antes se esperaba la respuesta del backend (Apps Script tarda 1-3 s)
+  // con un spinner y los controles deshabilitados, así que no se podía
+  // seguir editando hasta que llegara. Ahora nada se bloquea: si el
+  // guardado falla, el contexto revierte el estado compartido y el
+  // formulario acompaña revirtiendo sus valores locales, más el banner.
+  function saveField(column, newValue) {
     if (readOnlyPreview) return;
 
     const valToSave = newValue !== undefined ? newValue : values[column];
-    
-    let updates = { [column]: valToSave };
+
+    const updates = { [column]: valToSave };
 
     // Auto fill user stamp if marking SÍ on Presentado / Archivado, clear if NO
     if (valToSave === 'SI' || valToSave === 'SÍ') {
@@ -135,49 +155,42 @@ export default function ClientDetail({
       }
     }
 
-    // Update local state first for immediate UI response
-    setValues((prev) => ({ ...prev, ...updates }));
-    // ...y en el estado compartido (lista + asignar clientes) también.
-    applyLocalUpdates(client._row, updates);
+    // Valores anteriores, para poder rebobinar el formulario si falla.
+    const prevValues = {};
+    Object.keys(updates).forEach((col) => {
+      prevValues[col] = values[col];
+    });
 
-    setSavingField(column);
-    setSavedField(null);
+    // Pintado inmediato: formulario local + estado compartido (lista y
+    // "Asignar clientes" ven el cambio sin recargar).
+    setValues((prev) => ({ ...prev, ...updates }));
     setError('');
 
-    try {
-      const savePromises = [
-        api.updateCell({
-          year,
-          sheet: month,
-          row: client._row,
-          column,
-          value: valToSave,
-        }),
-      ];
+    // El ✓ se muestra en el mismo gesto, no cuando responde el backend.
+    setSavedField(column);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => {
+      savedTimer.current = null;
+      setSavedField(null);
+    }, SAVED_FEEDBACK_MS);
 
-      for (const [col, val] of Object.entries(updates)) {
-        if (col !== column) {
-          savePromises.push(
-            api.updateCell({
-              year,
-              sheet: month,
-              row: client._row,
-              column: col,
-              value: val,
-            })
-          );
-        }
-      }
-
-      await Promise.all(savePromises);
-
-      setSavedField(column);
-      setTimeout(() => setSavedField(null), 1800);
-    } catch (err) {
+    saveRowUpdatesInBackground(client._row, updates).catch((err) => {
+      // El contexto ya revirtió las celdas del estado compartido que todavía
+      // conservaban el valor fallido. El formulario hace exactamente lo
+      // mismo: sólo rebobina lo que no se volvió a tocar entre medio.
+      setSavedField((prev) => (prev === column ? null : prev));
+      setValues((prev) => {
+        let next = null;
+        Object.entries(updates).forEach(([col, val]) => {
+          if (prev[col] === val) {
+            if (!next) next = { ...prev };
+            next[col] = prevValues[col];
+          }
+        });
+        return next || prev;
+      });
       setError(`No se pudo guardar "${column}": ${err.message}`);
-    } finally {
-      setSavingField(null);
-    }
+    });
   }
 
   return (
@@ -280,7 +293,6 @@ export default function ClientDetail({
           const fieldType = isEncargadoField
             ? 'assignment'
             : getFieldType(field, values[field]);
-          const isSaving = savingField === field;
           const isJustSaved = savedField === field;
           const isActive = activeField === field;
           const currentValue = String(values[field] ?? '').trim().toUpperCase();
@@ -331,7 +343,6 @@ export default function ClientDetail({
                     }`}
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.95 }}
-                    disabled={isSaving}
                     onFocus={() => setActiveField(field)}
                     onClick={() => saveField(field, 'SI')}
                   >
@@ -344,7 +355,6 @@ export default function ClientDetail({
                     className={`yesno-toggle-btn ${currentValue === 'NO' ? 'active-no' : ''}`}
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.95 }}
-                    disabled={isSaving}
                     onFocus={() => setActiveField(field)}
                     onClick={() => saveField(field, 'NO')}
                   >
@@ -359,7 +369,6 @@ export default function ClientDetail({
                     whileTap={{ scale: 0.92 }}
                     style={{ flex: '0 0 auto', padding: '8px' }}
                     title="Limpiar campo"
-                    disabled={isSaving}
                     onFocus={() => setActiveField(field)}
                     onClick={() => saveField(field, '')}
                   >
@@ -376,11 +385,7 @@ export default function ClientDetail({
                       }`}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.95 }}
-                      disabled={isSaving}
-                      onClick={() => {
-                        setValues({ ...values, [field]: 'SI' });
-                        saveField(field, 'SI');
-                      }}
+                      onClick={() => saveField(field, 'SI')}
                     >
                       <CheckCircle2 size={13} />
                       <span>SÍ</span>
@@ -391,11 +396,7 @@ export default function ClientDetail({
                       className={`yesno-toggle-btn ${currentValue === 'NO' ? 'active-no' : ''}`}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.95 }}
-                      disabled={isSaving}
-                      onClick={() => {
-                        setValues({ ...values, [field]: 'NO' });
-                        saveField(field, 'NO');
-                      }}
+                      onClick={() => saveField(field, 'NO')}
                     >
                       <XCircle size={13} />
                       <span>NO</span>
@@ -419,12 +420,10 @@ export default function ClientDetail({
                       className={`field-save-btn ${isJustSaved ? 'saved' : ''}`}
                       whileHover={{ scale: 1.08 }}
                       whileTap={{ scale: 0.92 }}
-                      disabled={isSaving || values[field] === client[field]}
+                      disabled={values[field] === client[field]}
                       onClick={() => saveField(field)}
                     >
-                      {isSaving ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : isJustSaved ? (
+                      {isJustSaved ? (
                         <Check size={15} />
                       ) : (
                         <Save size={15} />
@@ -441,13 +440,9 @@ export default function ClientDetail({
                   <select
                     className="select-input"
                     value={encargadoActual}
-                    disabled={isSaving}
                     onFocus={() => setActiveField(field)}
                     onBlur={() => setActiveField((prev) => (prev === field ? null : prev))}
-                    onChange={(e) => {
-                      setValues({ ...values, [field]: e.target.value });
-                      saveField(field, e.target.value);
-                    }}
+                    onChange={(e) => saveField(field, e.target.value)}
                   >
                     <option value="">Sin asignar</option>
                     {encargadoFueraDeEquipo && (
@@ -494,12 +489,10 @@ export default function ClientDetail({
                       className={`field-save-btn ${isJustSaved ? 'saved' : ''}`}
                       whileHover={{ scale: 1.08 }}
                       whileTap={{ scale: 0.92 }}
-                      disabled={isSaving || values[field] === client[field]}
+                      disabled={values[field] === client[field]}
                       onClick={() => saveField(field)}
                     >
-                      {isSaving ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : isJustSaved ? (
+                      {isJustSaved ? (
                         <Check size={15} />
                       ) : (
                         <Save size={15} />
@@ -530,12 +523,10 @@ export default function ClientDetail({
                     className={`field-save-btn ${isJustSaved ? 'saved' : ''}`}
                     whileHover={{ scale: 1.08 }}
                     whileTap={{ scale: 0.92 }}
-                    disabled={isSaving || values[field] === client[field]}
+                    disabled={values[field] === client[field]}
                     onClick={() => saveField(field)}
                   >
-                    {isSaving ? (
-                      <Loader2 size={15} className="animate-spin" />
-                    ) : isJustSaved ? (
+                    {isJustSaved ? (
                       <Check size={15} />
                     ) : (
                       <Save size={15} />

@@ -31,7 +31,6 @@ const AssignRow = memo(function AssignRow({
   name,
   currentEncargado,
   activeAssignee,
-  isSaving,
   justSaved,
   editing,
   disabled,
@@ -85,9 +84,8 @@ const AssignRow = memo(function AssignRow({
       <span className="assign-row-name">{name || 'Sin nombre'}</span>
 
       <div className="assign-row-control">
-        {isSaving && <Loader2 size={15} className="animate-spin" />}
         {justSaved && <Check size={15} style={{ color: 'var(--success)' }} />}
-        {isAssignedToActive && !isSaving && !justSaved && (
+        {isAssignedToActive && !justSaved && (
           <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
         )}
         {editing ? (
@@ -205,7 +203,6 @@ export default function AssignClients({ onBack }) {
     clearFilters,
     hasActiveFilters,
     // escritura compartida
-    savingRowSet,
     savedRowSet,
     getSearchScore,
     setEncargado,
@@ -480,7 +477,9 @@ export default function AssignClients({ onBack }) {
 
       try {
         // setEncargado pinta el cambio al instante en el estado compartido
-        // (se ve también en la lista de clientes) y revierte si falla.
+        // (se ve también en la lista de clientes), escribe en segundo plano
+        // y revierte si falla. La promesa se resuelve cuando el lote se
+        // confirma: ahí aparece el ✓ verde de la fila.
         await setEncargado(row._row, valueToSave);
       } catch (err) {
         setHistory((prev) => prev.filter((h) => h.rowNum !== row._row || h.newUser !== valueToSave));
@@ -1022,7 +1021,6 @@ export default function AssignClients({ onBack }) {
                 name={row[nameKey]}
                 currentEncargado={String(row[encargadoCol] || '').trim()}
                 activeAssignee={activeAssignee}
-                isSaving={savingRowSet.has(row._row)}
                 justSaved={savedRowSet.has(row._row)}
                 editing={editingRow === row._row}
                 disabled={!encargadoCol}
