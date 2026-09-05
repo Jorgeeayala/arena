@@ -1038,19 +1038,46 @@ body {
   font-style: italic;
 }
 
-/* Versión "cerrada" del selector: un botón con el nombre del encargado.
-   El <select> real se monta sólo al tocarlo (una fila a la vez), así la
-   lista no arrastra cientos de desplegables con todo el equipo adentro. */
+/* Versión "cerrada" del selector: un botón con el nombre del encargado y
+   una flecha que lo delata como desplegable. El <select> real se monta sólo
+   al tocarlo (una fila a la vez), así la lista no arrastra cientos de
+   desplegables con todo el equipo adentro -- y con showPicker() el primer
+   toque ya abre la lista, sin el doble toque de antes. */
 .assign-row-encargado {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
   text-align: left;
+}
+
+.assign-row-encargado .assign-row-encargado-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.assign-row-encargado svg {
+  flex: 0 0 auto;
+  opacity: 0.5;
+}
+
+.assign-row-encargado.is-empty svg {
+  opacity: 0.35;
+}
+
 .assign-row-encargado:not(:disabled):hover {
   border-color: var(--primary-border);
   background-color: var(--bg-card-hover);
+}
+
+.assign-row-encargado:not(:disabled):hover svg {
+  opacity: 0.85;
+}
+
+.assign-row-encargado:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 /* Agrupación visual por vencimiento (para ver el ciclo del round-robin) */

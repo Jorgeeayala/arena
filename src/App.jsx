@@ -547,10 +547,9 @@ export default function App({
     if (uiMode === 'executive') {
       return (
         <header className="real-exec-navbar">
-          <div className="real-exec-navbar-brand">
-            <img src="/logo-mj.webp" alt="MJ Estudio Contable" />
-            <div><strong>MJ Control</strong><span>Inteligencia operativa</span></div>
-          </div>
+          {/* Sin marca: el logo y el lema no aportan a la operación diaria.
+              La barra queda limpia con las acciones (período, actualizar,
+              configuración, usuario). */}
 
           <div className="real-exec-navbar-actions">
             {year && month && !selectedClient && (
