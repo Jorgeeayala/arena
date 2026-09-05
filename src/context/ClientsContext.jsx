@@ -455,16 +455,37 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
     [selectedAssignee, encargadoCol, user]
   );
 
+  // Estado "presentado" de una fila. La columna SI/NO MANDA; el sello
+  // ("Presentado por: X") es sólo un fallback para planillas viejas.
+  //
+  // Antes se hacía `isAffirmativeValue(val) || hasStamp`, y el resultado era
+  // que al desmarcar Presentado el ícono seguía en verde: la columna quedaba
+  // en "NO" pero el sello seguía cargado y ganaba la disyunción. Ahora, si
+  // existe una columna de estado propia, el sello no se consulta.
   const isRowPresentado = useCallback(
     (row) => {
-      if (!primaryStatusHeader) return false;
-      const val = row[primaryStatusHeader];
-      const hasStamp =
-        presentadoPorCol && Boolean(String(row[presentadoPorCol] || '').trim());
-      if (primaryStatusHeader === presentadoPorCol) {
-        return Boolean(String(val || '').trim());
+      // Sin columna de estado real: lo único que indica que la fila ya se
+      // presentó es el sello de usuario.
+      if (!primaryStatusHeader) {
+        return Boolean(
+          presentadoPorCol && String(row[presentadoPorCol] || '').trim()
+        );
       }
-      return isAffirmativeValue(val) || Boolean(hasStamp);
+
+      const val = row[primaryStatusHeader];
+
+      // Planilla vieja "solo sello": la columna que se detecta como estado ES
+      // el sello ("Presentado por:"). Acá cualquier valor no vacío cuenta
+      // como presentado, salvo el "NO"/"N" literal que se escribe al
+      // desmarcar.
+      if (primaryStatusHeader === presentadoPorCol) {
+        const text = String(val || '').trim();
+        if (!text) return false;
+        return !/^no?$/i.test(text);
+      }
+
+      // Hay columna SI/NO propia: depende SOLO de ella.
+      return isAffirmativeValue(val);
     },
     [primaryStatusHeader, presentadoPorCol]
   );
