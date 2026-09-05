@@ -82,16 +82,17 @@
     var(--rx-app);
 }
 
-/* Encabezado funcional conectado al usuario y período reales. */
+/* Encabezado funcional conectado al usuario y período reales. Sin marca:
+   sólo las acciones (actualizar, período, configuración, usuario). */
 .real-exec-navbar {
   position: sticky;
   top: 0;
   z-index: 100;
   min-height: 70px;
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 24px;
+  justify-content: flex-end;
+  gap: 12px;
   padding: 10px clamp(18px, 4vw, 48px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   /* Fondo sólido: el blur sobre un 97 % de opacidad casi no se veía y se
@@ -105,7 +106,6 @@
   font: inherit;
 }
 
-.real-exec-navbar-brand,
 .real-exec-navbar-actions,
 .real-exec-user-button,
 .real-exec-refresh-button,
@@ -116,32 +116,11 @@
   align-items: center;
 }
 
-.real-exec-navbar-brand {
-  gap: 10px;
-}
-
-.real-exec-navbar-brand img {
-  width: 39px;
-  height: 39px;
-  padding: 4px;
-  border-radius: 12px;
-  background: #ffffff;
-  object-fit: contain;
-}
-
-.real-exec-navbar-brand > div,
 .real-exec-user-button > span:last-child {
   display: flex;
   flex-direction: column;
 }
 
-.real-exec-navbar-brand strong {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: var(--rx-fs-xl);
-  font-weight: 600;
-}
-
-.real-exec-navbar-brand span,
 .real-exec-user-button small {
   color: #a0a3a7;
   font-size: var(--rx-fs-2xs);
@@ -820,14 +799,9 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow-x: auto;
   color: var(--rx-subtle);
-  scrollbar-width: none;
-}
-
-.real-exec-filters::-webkit-scrollbar {
-  display: none;
 }
 
 .real-exec-filters > svg {
@@ -1054,7 +1028,7 @@
   background: color-mix(in srgb, var(--rx-brand-soft) 38%, var(--rx-surface));
 }
 
-.real-exec-index {
+.real-exec-row-num {
   color: var(--rx-subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--rx-fs-2xs);
@@ -1156,7 +1130,9 @@
 .real-exec-status-icon.is-actionable {
   padding: 0;
   cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  /* El color entra en la transición: al alternar el estado el icono cambia
+     de tinte en el mismo toque (la escritura real va por detrás). */
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 
 .real-exec-status-icon.is-actionable:hover:not(:disabled) {
@@ -1269,10 +1245,6 @@
 }
 
 @media (max-width: 860px) {
-  .real-exec-navbar {
-    grid-template-columns: 1fr auto;
-  }
-
   .real-exec-insights {
     grid-template-columns: 1fr;
   }
@@ -1303,12 +1275,6 @@
     padding: 8px 12px;
   }
 
-  .real-exec-navbar-brand img {
-    width: 35px;
-    height: 35px;
-  }
-
-  .real-exec-navbar-brand span,
   .real-exec-refresh-button span,
   .real-exec-period-button span,
   .real-exec-user-button > span:last-child {
@@ -1427,9 +1393,9 @@
     border-radius: 14px;
   }
 
-  .real-exec-index {
+  .real-exec-row-num {
     grid-column: 1;
-    grid-row: 1;
+    grid-row: 1 / span 2;
   }
 
   .real-exec-client-identity {
@@ -2024,167 +1990,9 @@
   }
 }
 
-/* Selección y acciones masivas. */
-.real-exec-row-select {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  color: var(--rx-subtle);
-  cursor: pointer;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--rx-fs-2xs);
-}
-
-.real-exec-row-select input,
-.real-exec-select-all input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--rx-brand);
-  cursor: pointer;
-}
-
-.real-exec-bulk-toolbar {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 11px;
-  padding: 8px 10px;
-  border: 1px solid var(--rx-line);
-  border-radius: 14px;
-  background: var(--rx-soft);
-}
-
-.real-exec-bulk-toolbar.is-active {
-  border-color: color-mix(in srgb, var(--rx-brand) 45%, var(--rx-line));
-  background: var(--rx-brand-soft);
-}
-
-.real-exec-select-all,
-.real-exec-bulk-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--rx-ink);
-  font-size: var(--rx-fs-xs);
-  font-weight: 750;
-}
-
-.real-exec-bulk-control select,
-.real-exec-sort-control select {
-  min-height: 32px;
-  max-width: 190px;
-  padding: 0 28px 0 9px;
-  border: 1px solid var(--rx-line);
-  border-radius: 9px;
-  background: var(--rx-surface);
-  color: var(--rx-ink);
-  font: inherit;
-  font-size: var(--rx-fs-xs);
-}
-
-.real-exec-bulk-toolbar button {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--rx-line);
-  border-radius: 9px;
-  background: var(--rx-surface);
-  color: var(--rx-brand-dark);
-  cursor: pointer;
-  font-size: var(--rx-fs-xs);
-  font-weight: 800;
-}
-
-.real-exec-bulk-toolbar button:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-
-.real-exec-bulk-toolbar .real-exec-bulk-clear {
-  color: var(--rx-red);
-}
-
-.real-exec-bulk-toolbar > small {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin-left: auto;
-  color: var(--rx-muted);
-  font-size: var(--rx-fs-2xs);
-}
-
-.real-exec-bulk-toolbar > small button {
-  min-height: 26px;
-  padding: 0 8px;
-  color: var(--rx-red);
-  font-size: var(--rx-fs-2xs);
-}
-
-.real-exec-confirm-overlay {
-  z-index: 1400;
-  background: rgba(15, 23, 42, 0.52);
-}
-
-.real-exec-confirm-modal {
-  max-width: 440px;
-  border-color: var(--rx-line);
-  background: var(--rx-surface);
-  color: var(--rx-ink);
-  box-shadow: var(--rx-shadow-lg);
-}
-
-.real-exec-confirm-copy {
-  margin: 0;
-  color: var(--rx-subtle);
-  font-size: var(--rx-fs-sm);
-  line-height: 1.55;
-}
-
-.real-exec-confirm-copy strong {
-  color: var(--rx-ink);
-}
-
-.real-exec-confirm-sample {
-  display: grid;
-  gap: 5px;
-  margin: 14px 0 0;
-  padding: 10px 12px 10px 28px;
-  border: 1px solid var(--rx-line);
-  border-radius: 12px;
-  background: var(--rx-soft);
-  color: var(--rx-subtle);
-  font-size: var(--rx-fs-xs);
-}
-
-.real-exec-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
-}
-
-.real-exec-confirm-actions button {
-  min-height: 38px;
-  padding: 0 13px;
-  border-radius: 11px;
-  cursor: pointer;
-  font-size: var(--rx-fs-xs);
-  font-weight: 850;
-}
-
-.real-exec-confirm-secondary {
-  border: 1px solid var(--rx-line);
-  background: var(--rx-surface);
-  color: var(--rx-subtle);
-}
-
-.real-exec-confirm-primary {
-  border: 1px solid color-mix(in srgb, var(--rx-red) 35%, transparent);
-  background: var(--rx-red);
-  color: #fff;
-}
+/* El número de fila hereda el estilo monoespaciado de .real-exec-row-num.
+   Sin checkbox de selección: la asignación de clientes vive en el apartado
+   "Asignar clientes", la fila del panel es consulta y atajos. */
 
 .real-exec-sort-control {
   display: inline-flex;
@@ -2196,8 +2004,15 @@
 }
 
 .real-exec-sort-control select {
+  min-height: 32px;
   max-width: 130px;
+  padding: 0 28px 0 9px;
+  border: 1px solid var(--rx-line);
+  border-radius: 9px;
   background: var(--rx-soft);
+  color: var(--rx-ink);
+  font: inherit;
+  font-size: var(--rx-fs-xs);
 }
 
 /* Menú compacto para los estados secundarios de cada cliente. */
@@ -2268,20 +2083,6 @@
   .real-exec-desktop-sidebar {
     display: none;
   }
-
-  .real-exec-bulk-toolbar,
-  .real-exec-bulk-control {
-    align-items: stretch;
-  }
-
-  .real-exec-bulk-control {
-    width: 100%;
-  }
-
-  .real-exec-bulk-control select {
-    flex: 1;
-    max-width: none;
-  }
 }
 
 .real-exec-table {
@@ -2290,13 +2091,6 @@
 
 .real-exec-virtual-row:has(.real-exec-status-menu) {
   z-index: 20;
-}
-
-@media (max-width: 640px) {
-  .real-exec-row-select {
-    grid-column: 1;
-    grid-row: 1 / span 2;
-  }
 }
 
 /* Asignar forma parte de la navegación lateral/inferior; se evita duplicar

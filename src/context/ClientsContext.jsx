@@ -598,11 +598,19 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
 
   const flushPendingSaves = useCallback(() => api.flushPendingSaves(), []);
 
-  // Guarda varias columnas de una fila: pinta el cambio al instante en el
-  // estado compartido (se ve en todas las pantallas) y, si el backend
-  // falla, lo revierte. Devuelve la promesa del guardado.
-  const saveRowUpdates = useCallback(
-    async (rowNum, updates) => {
+  // Guarda varias columnas de una fila. Siempre pinta el cambio al instante
+  // en el estado compartido (se ve en todas las pantallas); la diferencia
+  // está en cómo se comporta mientras el backend responde:
+  //
+  //  - normal: marca la fila "guardando" (spinner) y revierte si falla. Lo
+  //    usan los formularios, donde esperar el guardado es parte del flujo.
+  //  - background: no marca nada ni bloquea la UI; la fila sigue plenamente
+  //    usable (es lo que hacen los toggles rápidos del panel). Si el
+  //    guardado falla, revierte la celda SÓLO si todavía conserva el valor
+  //    que falló (así no pisa una corrección hecha entre medio) y avisa
+  //    lanzando el error para que la pantalla lo muestre.
+  const runRowSave = useCallback(
+    async (rowNum, updates, { background = false } = {}) => {
       const target = rowsRef.current.find((r) => r._row === rowNum);
       const prevValues = {};
       if (target) {
@@ -612,7 +620,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       }
 
       applyLocalUpdates(rowNum, updates);
-      markRowSaving(rowNum);
+      if (!background) markRowSaving(rowNum);
 
       try {
         await Promise.all(
@@ -620,14 +628,40 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
             api.updateCell({ year, sheet: month, row: rowNum, column, value })
           )
         );
-        markRowSaved(rowNum);
+        if (!background) markRowSaved(rowNum);
       } catch (err) {
-        applyLocalUpdates(rowNum, prevValues);
-        setSavingRows((prev) => prev.filter((r) => r !== rowNum));
+        setRows((prev) =>
+          prev.map((r) => {
+            if (r._row !== rowNum) return r;
+            let next = null;
+            Object.entries(prevValues).forEach(([col, prevVal]) => {
+              if (r[col] === updates[col]) {
+                if (!next) next = { ...r };
+                next[col] = prevVal;
+              }
+            });
+            return next || r;
+          })
+        );
+        if (!background) {
+          setSavingRows((prev) => prev.filter((r) => r !== rowNum));
+        }
         throw err;
       }
     },
     [applyLocalUpdates, year, month]
+  );
+
+  const saveRowUpdates = useCallback(
+    (rowNum, updates) => runRowSave(rowNum, updates),
+    [runRowSave]
+  );
+
+  // Variante sin bloqueo para acciones rápidas: pinta al toque, escribe en
+  // segundo plano y revierte sólo si falla.
+  const saveRowUpdatesInBackground = useCallback(
+    (rowNum, updates) => runRowSave(rowNum, updates, { background: true }),
+    [runRowSave]
   );
 
   // Atajo para la columna "Encargado" (lo que usa Asignar clientes).
@@ -707,6 +741,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,
+      saveRowUpdatesInBackground,
       setEncargado,
       queueCellUpdate,
       flushPendingSaves,
@@ -764,6 +799,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,
+      saveRowUpdatesInBackground,
       setEncargado,
       queueCellUpdate,
       flushPendingSaves,

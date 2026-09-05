@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useClients } from '../context/ClientsContext';
@@ -6,6 +6,7 @@ import { formatPeriodLabel } from '../utils';
 import VencimientoPill from '../components/VencimientoPill';
 import {
   ArrowLeft,
+  ChevronDown,
   Search,
   Loader2,
   AlertCircle,
@@ -56,8 +57,21 @@ const AssignRow = memo(function AssignRow({
   }
 
   const selectRef = useRef(null);
-  useEffect(() => {
-    if (editing && selectRef.current) selectRef.current.focus();
+  // Abrir el desplegable EN EL MISMO TOQUE: el <select> se monta al tocar el
+  // botón y showPicker() despliega la lista nativa dentro del mismo gesto
+  // (por eso useLayoutEffect y no useEffect: corre en el mismo task del
+  // click, cuando el navegador todavía considera el gesto válido). Si el
+  // navegador no soporta showPicker, queda enfocado y el segundo toque abre
+  // el desplegable, como antes -- sin romper nada.
+  useLayoutEffect(() => {
+    if (!editing || !selectRef.current) return;
+    const select = selectRef.current;
+    select.focus();
+    try {
+      select.showPicker?.();
+    } catch {
+      // Sin soporte o sin gesto válido: el desplegable no se abre solo.
+    }
   }, [editing]);
 
   return (
@@ -142,7 +156,10 @@ const AssignRow = memo(function AssignRow({
               onStartEdit(row._row);
             }}
           >
-            {currentEncargado || 'Sin asignar'}
+            <span className="assign-row-encargado-label">
+              {currentEncargado || 'Sin asignar'}
+            </span>
+            <ChevronDown size={13} aria-hidden="true" />
           </button>
         )}
       </div>
