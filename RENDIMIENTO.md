@@ -32,6 +32,8 @@ a la planilla, así que nada de acá modifica cómo se escribe en la hoja.
 | `src/App.jsx`, `src/main.jsx` | Un único bundle de 470 KB: para mostrar el selector de usuario se descargaban Asignar, Detalle, Nuevo cliente, Configuración y todo el panel. | `React.lazy` + `Suspense` para esas cuatro pantallas y para el panel ejecutivo. El arranque bajó a 378 KB (119 KB gzip). |
 | `public/logo-mj.png` | PNG de 500×500 y **150 KB** usado en el splash, el navbar y el drawer. | Convertido a `logo-mj.webp` de 320×320 y **15 KB**. El PNG original se borró (sigue en el historial por si se lo quiere recuperar). |
 | `AppSplashLoader.jsx`, `App.jsx` | El splash esperaba datos hasta 3 s. | Máximo 1,6 s: si la primera pantalla no terminó, el splash se retira igual y se ve el esqueleto o el error de esa pantalla. |
+| `src/screens/ClientDetail.jsx` + `ClientsContext.jsx` | Guardar un campo del detalle (incluido el desplegable de **Encargado**) mostraba un spinner, **deshabilitaba** el `<select>` y los botones SÍ/NO y esperaba la respuesta del Apps Script (1–3 s) antes de dejar seguir editando. Si fallaba, el valor quedaba cambiado en pantalla sin revertir el estado compartido. | `saveField` pinta el valor **y** el ✓ "Guardado" en el mismo gesto, y delega la escritura real en `saveRowUpdatesInBackground` (la cola que agrupa cambios y los manda en lote `updateBatch`). Sin spinner ni `disabled`: lo único que se deshabilita es el botón de guardado cuando el valor no cambió. Si el guardado falla, el contexto revierte sólo las celdas que aún conservan el valor fallido, el formulario acompaña revirtiendo sus `values` con el mismo criterio y aparece el banner de error. |
+| `src/screens/AssignClients.jsx` | La fila mostraba un **spinner propio** mientras `setEncargado` esperaba la respuesta del backend. | Fuera el spinner por fila (`AssignRow` ya no recibe `isSaving`): `setEncargado` pasa a modo fondo —conservando el chequeo de permisos por rol— y el ✓ verde aparece cuando el lote se confirma (`savedRowSet`). Para eso `runRowSave` marca la fila como guardada también en modo background, donde no hay spinner que haga de señal. |
 
 ## 3. CSS
 
@@ -71,9 +73,16 @@ Con 300 clientes simulados y el backend falso (`tools/smoke`, medido con
 | Bundle inicial | 470 KB (143 KB gz) | **378 KB (119 KB gz)** |
 | CSS compilado | 72,8 KB (13,1 KB gz) | **61,6 KB (11,4 KB gz)** |
 | Logo del splash y navbar | 150 KB | **15 KB** |
+| Detalle: del clic a ver el campo pintado | esperaba al backend (**1.200 ms** en el smoke) | **~20 ms** (no espera) |
+| Clics SÍ/NO rápidos sobre la misma celda | 1 request por clic | **1 lote** con el último valor |
 
 Los tiempos son de Node en una PC de escritorio: en un teléfono de gama media
 hay que multiplicarlos por 5 o 10, que es donde se sienten como lag.
+
+Las dos últimas filas se midieron montando la app real en jsdom contra el
+backend simulado con `LATENCY_MS=1200` (para imitar los 1–3 s del Apps
+Script): se cronometra el gesto sobre el desplegable de Encargado y se
+cuentan los `updateBatch` que salen al hacer cinco clics SÍ/NO seguidos.
 
 `npm run lint` → 0 warnings / 0 errores. `npm run build` → sin errores.
 
@@ -90,6 +99,12 @@ Resueltos en la sesión de UI posterior:
    `hybrid`, manteniendo Presentado y Archivado como accesos directos.
 4. **Alta de clientes:** se agregó `action: 'create'` al Apps Script, con
    validación de permisos, lock, formato/validaciones heredados y auditoría.
+5. **Ícono de Presentado coherente con la planilla.** `isRowPresentado` hacía
+   `isAffirmativeValue(val) || hasStamp`: al desmarcar Presentado la columna
+   quedaba en "NO" pero el sello "Presentado por: X" seguía cargado y ganaba
+   la disyunción, así que el ícono no reflejaba el cambio. Ahora, cuando hay
+   columna de estado SI/NO real, el estado depende sólo de ella; el sello
+   quedó como fallback para planillas viejas sin columna propia.
 
 Todavía pendiente:
 
