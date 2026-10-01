@@ -98,6 +98,16 @@ try {
   await click(encBtn);
   console.log('Tras tocar un encargado: <select> montados =', $$('select').length);
 
+  // Panel exclusivo de SUPERUSUARIO en Configuración.
+  const settingsBtn = $$('button').find((b) => /Configuración/i.test(b.getAttribute('title') || b.getAttribute('aria-label') || b.textContent));
+  if (settingsBtn) {
+    await click(settingsBtn);
+    await waitFor(() => $$('button').some((b) => /Gestionar usuarios y accesos/.test(b.textContent)), 'modal Configuración con opción Superusuario');
+    await clickText('Gestionar usuarios y accesos');
+    await waitFor(() => $$('.settings-admin-card').length === 5, 'lista de usuarios de Superusuario');
+    console.log('Gestión de usuarios (Superusuario): tarjetas =', $$('.settings-admin-card').length);
+  }
+
   console.log('\nOK');
 } catch (error) {
   console.error('FALLÓ:', error);

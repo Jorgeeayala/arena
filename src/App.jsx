@@ -18,7 +18,7 @@ import MobileTabBar from './components/MobileTabBar';
 import DesktopSidebar from './components/DesktopSidebar';
 import useMediaQuery from './hooks/useMediaQuery';
 const SettingsDialog = lazy(() => import('./components/SettingsDialog'));
-import { ClientsProvider, useClients } from './context/ClientsContext';
+import { ClientsProvider, useClientsActions } from './context/ClientsContext';
 import { STORAGE_KEY_USER } from './config';
 import {
   FONT_SCALE_OPTIONS,
@@ -102,6 +102,7 @@ export default function App({
   const [pinChangeError, setPinChangeError] = useState('');
   const [pinChangeSubmitting, setPinChangeSubmitting] = useState(false);
   const [pinChangeNotice, setPinChangeNotice] = useState('');
+  const [syncStatus, setSyncStatus] = useState({ status: 'idle', pendingCount: 0 });
   const [initialScreenReady, setInitialScreenReady] = useState(false);
   const markInitialScreenReady = useCallback(() => setInitialScreenReady(true), []);
 
@@ -119,6 +120,7 @@ export default function App({
   const periodTabScrollRef = useRef({ stats: 0, clients: 0, assign: 0 });
   const authenticated = authState.status === 'authenticated';
   const userRole = authenticated ? authState.session?.user?.role : null;
+  const mustChangePin = Boolean(authenticated && authState.session?.mustChangePin);
   const activeSessionToken = authState.session?.token || '';
   const activeSessionExpiresAt = Number(authState.session?.expiresAt || 0);
   const activeSessionIdleMs = Number(authState.session?.idleTimeoutMs || 0);
@@ -126,6 +128,42 @@ export default function App({
     !readOnlyPreview && (userRole === 'SUPERUSUARIO' || userRole === 'ADMINISTRADOR');
   const authReady = !user || authState.status !== 'checking';
   const initialContentReady = initialScreenReady && authReady;
+
+  // Suscripción al estado de la cola de guardado en memoria y protección
+  // antes de cerrar o esconder la pestaña cuando todavía hay cambios sin
+  // confirmar en la planilla.
+  useEffect(() => api.onSyncStatusChange(setSyncStatus), []);
+
+  useEffect(() => {
+    const flushIfPending = () => {
+      if (api.hasPendingSaves()) {
+        api.flushPendingSaves().catch(() => {});
+      }
+    };
+
+    const handleBeforeUnload = (event) => {
+      if (!api.hasPendingSaves()) return;
+      flushIfPending();
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    const handleVisibilityHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        flushIfPending();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', flushIfPending);
+    document.addEventListener('visibilitychange', handleVisibilityHidden);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', flushIfPending);
+      document.removeEventListener('visibilitychange', handleVisibilityHidden);
+    };
+  }, []);
 
   const resetPrivateNavigation = useCallback(() => {
     setYear(null);
@@ -219,15 +257,19 @@ export default function App({
   useEffect(() => api.onAuthFailure(restartAuthentication), [restartAuthentication]);
 
   // Mantiene sincronizada la inactividad visible con Apps Script. Mientras la
-  // persona usa la app se valida la sesión periódicamente; al dejarla abierta
-  // sin actividad se limpia inmediatamente el contenido privado en memoria.
+  // persona usa la app se valida la sesión periódicamente; al recuperar el foco
+  // se valida de inmediato contra el servidor y al dejarla sin actividad o si
+  // no se puede renovar autorización reiteradamente se bloquea (fail closed) y
+  // se limpia el contenido privado en memoria.
   useEffect(() => {
     if (!authenticated || !activeSessionToken) return undefined;
 
     const idleTimeoutMs = Math.max(activeSessionIdleMs, 60_000);
     const heartbeatIntervalMs = Math.min(10 * 60_000, Math.max(60_000, idleTimeoutMs / 3));
+    const focusCheckMinIntervalMs = 5_000;
     let lastActivityAt = Date.now();
     let lastServerCheckAt = Date.now();
+    let consecutiveFailures = 0;
     let idleTimer;
     let checkingServer = false;
     let stopped = false;
@@ -247,12 +289,21 @@ export default function App({
       idleTimer = setTimeout(expireLocally, remaining);
     };
 
-    const checkServerSession = async () => {
+    const checkServerSession = async ({ onFocus = false } = {}) => {
       if (checkingServer || stopped) return;
+      const now = Date.now();
+      if (
+        (activeSessionExpiresAt > 0 && now >= activeSessionExpiresAt) ||
+        now - lastActivityAt >= idleTimeoutMs
+      ) {
+        expireLocally();
+        return;
+      }
       checkingServer = true;
-      lastServerCheckAt = Date.now();
+      lastServerCheckAt = now;
       try {
         const refreshed = await api.validateSession();
+        consecutiveFailures = 0;
         if (!stopped) {
           setAuthState((previous) =>
             previous.status === 'authenticated'
@@ -261,7 +312,14 @@ export default function App({
           );
         }
       } catch {
-        // api.js notifica el rechazo y restartAuthentication hace la limpieza.
+        // Si fue error de sesión (SESSION_REVOKED, SESSION_EXPIRED...), api.js
+        // ya notificó el rechazo y restartAuthentication limpió la memoria.
+        // Si fue falla de transporte al volver al foco y se repite, bloqueamos
+        // fail closed cuando no se puede renovar autorización.
+        consecutiveFailures += 1;
+        if ((onFocus && consecutiveFailures >= 2) || consecutiveFailures >= 3) {
+          expireLocally();
+        }
       } finally {
         checkingServer = false;
       }
@@ -269,7 +327,10 @@ export default function App({
 
     const recordActivity = () => {
       const now = Date.now();
-      if (now - lastActivityAt >= idleTimeoutMs) {
+      if (
+        (activeSessionExpiresAt > 0 && now >= activeSessionExpiresAt) ||
+        now - lastActivityAt >= idleTimeoutMs
+      ) {
         expireLocally();
         return;
       }
@@ -278,14 +339,28 @@ export default function App({
       if (now - lastServerCheckAt >= heartbeatIntervalMs) checkServerSession();
     };
 
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') recordActivity();
+    const handleRegainFocus = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (
+        (activeSessionExpiresAt > 0 && now >= activeSessionExpiresAt) ||
+        now - lastActivityAt >= idleTimeoutMs
+      ) {
+        expireLocally();
+        return;
+      }
+      lastActivityAt = now;
+      scheduleIdleCheck();
+      if (now - lastServerCheckAt >= focusCheckMinIntervalMs) {
+        checkServerSession({ onFocus: true });
+      }
     };
 
     ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
       window.addEventListener(eventName, recordActivity, { passive: true });
     });
-    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('visibilitychange', handleRegainFocus);
+    window.addEventListener('focus', handleRegainFocus);
     scheduleIdleCheck();
 
     const heartbeat = setInterval(() => {
@@ -310,7 +385,8 @@ export default function App({
       ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
         window.removeEventListener(eventName, recordActivity);
       });
-      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('visibilitychange', handleRegainFocus);
+      window.removeEventListener('focus', handleRegainFocus);
     };
   }, [
     authenticated,
@@ -552,6 +628,17 @@ export default function App({
               configuración, usuario). */}
 
           <div className="real-exec-navbar-actions">
+            {syncStatus.status === 'syncing' && (
+              <span
+                className="sync-queue-pill"
+                role="status"
+                aria-live="polite"
+                title="Sincronizando cambios con la planilla"
+              >
+                <RefreshCw size={12} className="animate-spin" />
+                <span>Sincronizando…</span>
+              </span>
+            )}
             {year && month && !selectedClient && (
               <button
                 type="button"
@@ -568,6 +655,9 @@ export default function App({
                 type="button"
                 className="real-exec-period-button"
                 onClick={() => {
+                  if (api.hasPendingSaves()) {
+                    api.flushPendingSaves().catch(() => {});
+                  }
                   setSelectedClient(null);
                   setMobileTab('clients');
                   setMonth(null);
@@ -715,7 +805,7 @@ export default function App({
                 <div className="avatar-badge" style={{ display: 'flex', alignItems: 'center' }}>
                   <User size={14} />
                 </div>
-                <span className="nav-user-name" style={{ fontSize: '13px', fontWeight: 600 }}>
+                <span className="nav-user-name" style={{ fontSize: 'calc(13px * var(--ui-font-scale, 1))', fontWeight: 600 }}>
                   {user}
                 </span>
               </motion.button>
@@ -893,21 +983,24 @@ export default function App({
           />
         )}
 
-      {settingsOpen && (
+      {(settingsOpen || mustChangePin) && (
       <Suspense fallback={null}>
       <SettingsDialog
-        key="settings-open"
-        open={settingsOpen}
+        key={mustChangePin ? 'settings-must-change-pin' : 'settings-open'}
+        open={settingsOpen || mustChangePin}
         user={user}
+        userRole={userRole}
+        mustChangePin={mustChangePin}
         theme={theme}
         fontScale={fontScale}
         fontScaleOptions={FONT_SCALE_OPTIONS}
         error={pinChangeError}
         submitting={pinChangeSubmitting}
         onClose={() => {
-          if (!pinChangeSubmitting) setSettingsOpen(false);
+          if (!pinChangeSubmitting && !mustChangePin) setSettingsOpen(false);
         }}
         onChangePin={handleChangePin}
+        onChangeUser={handleChangeUser}
         onThemeChange={setTheme}
         onFontScaleChange={setFontScale}
       />
@@ -951,7 +1044,7 @@ function PeriodScreens({
   mobileTab,
   onMobileTabChange,
 }) {
-  const { reload } = useClients();
+  const { reload } = useClientsActions();
 
   const getScreenContent = () => {
     if (!user) {

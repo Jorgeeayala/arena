@@ -85,12 +85,12 @@ export default function YearPicker({ onPick, onReady }) {
             <AlertCircle size={20} style={{ flexShrink: 0 }} />
             <div>
               <strong>Error al conectar</strong>
-              <div style={{ fontSize: '13px', marginTop: '2px' }}>{error}</div>
+              <div style={{ fontSize: 'calc(13px * var(--ui-font-scale, 1))', marginTop: '2px' }}>{error}</div>
               <motion.button
                 className="btn-secondary"
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
-                style={{ marginTop: '10px', padding: '6px 12px', fontSize: '13px' }}
+                style={{ marginTop: '10px', padding: '6px 12px', fontSize: 'calc(13px * var(--ui-font-scale, 1))' }}
                 onClick={loadYears}
               >
                 <RefreshCw size={14} /> Reintentar
@@ -119,7 +119,7 @@ export default function YearPicker({ onPick, onReady }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <Calendar size={20} style={{ color: 'var(--primary)' }} />
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-main)' }}>Planilla {y}</span>
+                    <span style={{ fontSize: 'calc(17px * var(--ui-font-scale, 1))', fontWeight: 700, color: 'var(--text-main)' }}>Planilla {y}</span>
                   </div>
                 </div>
                 <ChevronRight size={20} className="year-row-chevron" />

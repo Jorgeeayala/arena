@@ -690,7 +690,7 @@ export default function AssignClients({ onBack }) {
           {actionError && (
             <div className="error-banner" style={{ marginTop: '8px' }}>
               <AlertCircle size={18} style={{ flexShrink: 0 }} />
-              <div style={{ fontSize: '13px' }}>{actionError}</div>
+              <div style={{ fontSize: 'calc(13px * var(--ui-font-scale, 1))' }}>{actionError}</div>
             </div>
           )}
 
@@ -743,7 +743,7 @@ export default function AssignClients({ onBack }) {
                     background: 'none',
                     border: 'none',
                     color: 'var(--text-subtle)',
-                    fontSize: '12px',
+                    fontSize: 'calc(12px * var(--ui-font-scale, 1))',
                     cursor: 'pointer',
                     textDecoration: 'underline',
                   }}
@@ -849,7 +849,7 @@ export default function AssignClients({ onBack }) {
                       <p
                         style={{
                           margin: '0 0 10px',
-                          fontSize: '12px',
+                          fontSize: 'calc(12px * var(--ui-font-scale, 1))',
                           color: 'var(--text-muted)',
                           borderLeft: '3px solid var(--warning)',
                           paddingLeft: '8px',

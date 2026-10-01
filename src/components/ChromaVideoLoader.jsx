@@ -165,7 +165,7 @@ export default function ChromaVideoLoader({
       />
 
       {hasError && (
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '12px' }}>
+        <div style={{ fontSize: 'calc(12px * var(--ui-font-scale, 1))', color: 'var(--text-muted)', textAlign: 'center', padding: '12px' }}>
           <span>Coloque su archivo de video en <code>public/loading.mp4</code> para ver la animación de carga con croma.</span>
         </div>
       )}

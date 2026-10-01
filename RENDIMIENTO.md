@@ -21,7 +21,7 @@ a la planilla, así que nada de acá modifica cómo se escribe en la hoja.
 | `src/context/ClientsContext.jsx` | `rosterUsers.push(user)` **mutaba el estado durante el render**, y el `useMemo` de `teamUsers` no se enteraba. | Se deriva con `useMemo` (`rosterWithUser`); ya no se muta nada. |
 | `src/ui-executive/ExecutiveDashboard.jsx` | Cada tecla volvía a reconciliar todo el panel (hero, métricas, prioridad, equipo, calendario). | Esas secciones se extrajeron a componentes `memo` (`HeroSection`, `MetricsSection`, `InsightsSection`, `SummarySection`) con props memoizadas: escribir sólo re-renderiza el input y la tabla. |
 | `src/ui-executive/ExecutiveDashboard.jsx` | La fila era un `<button>` con botones adentro (HTML inválido: React lo avisaba en consola y el navegador puede reestructurar el DOM). | La fila es un `div role="button"` con soporte de teclado (Enter / espacio). |
-| `src/context/ClientsContext.jsx` | El `value` del contexto tiene ~50 dependencias: cualquier cambio re-renderiza **todas** las pantallas que lo consumen. | Queda anotado como trabajo pendiente (ver "Lo que falta"); por ahora se mitigó memoizando los subárboles caros. |
+| `src/context/ClientsContext.jsx` | El `value` del contexto tenía ~50 dependencias: cualquier cambio re-renderizaba **todas** las pantallas que lo consumían. | Se dividió en 4 sub-contextos memoizados (`ClientsMetaContext`, `ClientsDataContext`, `ClientsFiltersContext`, `ClientsSaveStateContext`) manteniendo `useClients()` compatible. `PeriodScreens` y `ClientDetail` consumen `useClientsActions()` / `useClientsMeta()`, por lo que no se re-renderizan al cambiar `rows`, filtros o `savedRows`. |
 
 ## 2. Conexión visual al instante
 
@@ -105,18 +105,28 @@ Resueltos en la sesión de UI posterior:
    la disyunción, así que el ícono no reflejaba el cambio. Ahora, cuando hay
    columna de estado SI/NO real, el estado depende sólo de ella; el sello
    quedó como fallback para planillas viejas sin columna propia.
+6. **Sub-contextos en `ClientsContext`.** Separado en `ClientsMetaContext`,
+   `ClientsDataContext`, `ClientsFiltersContext` y `ClientsSaveStateContext`
+   conservando `useClients()` intacto.
+7. **Sincronización de la cola en web antes de cerrar.** `saveQueue.js`
+   contabiliza los lotes en vuelo (`inFlightCount`) y expone
+   `hasPendingSaves()`; `App.jsx` muestra el indicador `"Sincronizando…"`,
+   fuerza `flushPendingSaves()` al ocultar la pestaña o cambiar de período y
+   avisa con `beforeunload` si quedan cambios pendientes.
+8. **Escala tipográfica global y limpieza final.** Todas las reglas de
+   `styles.css` (Detalle, Asignar, Alta, Pickers y modales) escalan con
+   `--ui-font-scale` (mínimo base 12px), se eliminaron las 13 clases CSS
+   huérfanas restantes (`client-card*`, `client-list`, `picker-search-input`)
+   y los 4 activos sin referencia (`hero.png`, `vite.svg`, `icons.svg`,
+   `favicon.svg`), y se ocultó la doble ✕ nativa en `input[type="search"]`.
 
-Todavía pendiente:
+Todavía pendiente (sólo para Android nativo si se requiere offline):
 
-1. **Dividir el contexto.** Sigue siendo un único `value` con ~50
-   dependencias. Conviene abordarlo como refactor aislado, con pruebas de
-   regresión, separando datos / filtros / escritura o usando selectores.
-2. **Cola de guardado persistente.** No se persistió la cola completa porque
-   puede contener campos sensibles como `Clave MH`. Guardarla sin cifrado en
-   localStorage/IndexedDB comprometería la seguridad. Para Android, la opción
-   recomendada es almacenamiento cifrado respaldado por Android Keystore; en
-   web conviene mantenerla en memoria y mostrar/forzar la sincronización antes
-   de cerrar.
+1. **Cola de guardado persistente cifrada en Android.** En web se mantiene en
+   memoria por seguridad (para no escribir `Clave MH` en texto claro en
+   `localStorage`/`IndexedDB`) con flush automático y aviso antes de cerrar;
+   en Android nativo puede respaldarse con almacenamiento cifrado vía Android
+   Keystore si se busca tolerancia a cierre total sin red.
 
 ### Fuera de este frente
 

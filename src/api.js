@@ -4,6 +4,7 @@ import {
   enqueueUpdate,
   configureSaveQueue,
   onQueueStatusChange,
+  hasPendingSaves,
   flushNow,
   getPendingUpdates,
 } from './saveQueue';
@@ -92,6 +93,7 @@ function readStoredSession() {
         role: normalizeUserRole(parsed.user.role),
       },
       pinless: Boolean(parsed.pinless),
+      mustChangePin: Boolean(parsed.mustChangePin),
       expiresAt: Number(parsed.expiresAt || 0),
       idleTimeoutMs: Number(parsed.idleTimeoutMs || 0),
     };
@@ -117,6 +119,7 @@ function normalizeSession(data, fallbackToken = '') {
       role: normalizeUserRole(data.user.role),
     },
     pinless: Boolean(data.pinless),
+    mustChangePin: Boolean(data.mustChangePin),
     expiresAt: Number(data.expiresAt || 0),
     idleTimeoutMs: Number(data.idleTimeoutMs || 0),
   };
@@ -387,6 +390,39 @@ export const api = {
     return storeSession(normalizeSession(data));
   },
 
+  adminListUsers: async () => {
+    const data = await request({ action: 'adminListUsers' });
+    return Array.isArray(data.users) ? data.users : [];
+  },
+
+  adminResetPin: async (targetUser, tempPin) => {
+    const data = await request({
+      action: 'adminResetPin',
+      targetUser,
+      tempPin,
+    });
+    return data.user || null;
+  },
+
+  adminSetUserActive: async (targetUser, active) => {
+    const data = await request({
+      action: 'adminSetUserActive',
+      targetUser,
+      active: Boolean(active),
+    });
+    cache.users = null;
+    saveMetadataCache();
+    return data.user || null;
+  },
+
+  adminRevokeUserSessions: async (targetUser) => {
+    const data = await request({
+      action: 'adminRevokeUserSessions',
+      targetUser,
+    });
+    return data.user || null;
+  },
+
   validateSession: async ({ notifyOnFailure = true } = {}) => {
     if (!currentSession?.token) {
       throw new ApiError('Sesión requerida', { code: 'SESSION_REQUIRED' });
@@ -526,6 +562,7 @@ export const api = {
   },
 
   onSyncStatusChange: onQueueStatusChange,
+  hasPendingSaves,
   flushPendingSaves: flushNow,
 
   createClient: async ({ year, sheet, values }) => {
