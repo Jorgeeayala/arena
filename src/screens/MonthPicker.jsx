@@ -130,12 +130,12 @@ export default function MonthPicker({ year, onPick, onChangeYear }) {
             <AlertCircle size={20} style={{ flexShrink: 0 }} />
             <div>
               <strong>Error de conexión</strong>
-              <div style={{ fontSize: '13px', marginTop: '2px' }}>{error}</div>
+              <div style={{ fontSize: 'calc(13px * var(--ui-font-scale, 1))', marginTop: '2px' }}>{error}</div>
               <motion.button
                 className="btn-secondary"
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
-                style={{ marginTop: '10px', padding: '6px 12px', fontSize: '13px' }}
+                style={{ marginTop: '10px', padding: '6px 12px', fontSize: 'calc(13px * var(--ui-font-scale, 1))' }}
                 onClick={loadMonths}
               >
                 <RefreshCw size={14} /> Reintentar
@@ -161,7 +161,7 @@ export default function MonthPicker({ year, onPick, onChangeYear }) {
                 onClick={() => onPick(m)}
                 onMouseEnter={() => api.readClients(year, m)}
               >
-                <span style={{ fontSize: '15px', fontWeight: 700 }}>{m}</span>
+                <span style={{ fontSize: 'calc(15px * var(--ui-font-scale, 1))', fontWeight: 700 }}>{m}</span>
               </motion.button>
             ))}
           </motion.div>

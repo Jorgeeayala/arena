@@ -34,15 +34,17 @@ const NON_RETRYABLE_CODES = new Set([
 let pending = new Map(); // key -> { year, sheet, row, column, value, resolvers[], rejecters[] }
 let flushTimer = null;
 let flushing = false;
+let inFlightCount = 0;
 let postFn = null; // se inyecta desde api.js para evitar import circular
 
 const listeners = new Set();
 
 function notify() {
+  const totalPending = pending.size + inFlightCount;
   const status = flushing || pending.size > 0 ? 'syncing' : 'idle';
   listeners.forEach((cb) => {
     try {
-      cb({ status, pendingCount: pending.size });
+      cb({ status, pendingCount: totalPending });
     } catch (e) {
       console.warn('Error en listener de saveQueue:', e);
     }
@@ -53,8 +55,18 @@ function notify() {
 // estado de la cola sin acoplarse a la implementación interna.
 export function onQueueStatusChange(cb) {
   listeners.add(cb);
-  cb({ status: flushing || pending.size > 0 ? 'syncing' : 'idle', pendingCount: pending.size });
+  cb({
+    status: flushing || pending.size > 0 ? 'syncing' : 'idle',
+    pendingCount: pending.size + inFlightCount,
+  });
   return () => listeners.delete(cb);
+}
+
+// Consulta sincrónica para saber si quedan cambios en cola o viajando al
+// servidor (se usa en beforeunload / pagehide para forzar el flush o avisar
+// antes de cerrar la pestaña).
+export function hasPendingSaves() {
+  return flushing || pending.size > 0;
 }
 
 // api.js inyecta acá su función `post` (la que ya maneja retries de red,
@@ -179,17 +191,18 @@ async function sendBatch(batch) {
 
 async function flush() {
   if (flushing || pending.size === 0) return;
+  const batch = Array.from(pending.values());
+  pending = new Map();
   flushing = true;
+  inFlightCount = batch.length;
   notify();
 
   // Lo que llegue MIENTRAS se procesa este lote se acumula en un `pending`
   // nuevo y se manda en el próximo flush, no se pierde ni se mezcla.
-  const batch = Array.from(pending.values());
-  pending = new Map();
-
   await sendBatch(batch);
 
   flushing = false;
+  inFlightCount = 0;
   notify();
 
   if (pending.size > 0) {

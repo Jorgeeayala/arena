@@ -1,6 +1,7 @@
 // Backend SIMULADO del Apps Script, para probar la app sin planilla real.
-// Responde las acciones que usa src/api.js (login, session, users, years,
-// months, read, update/updateBatch y create) con datos inventados.
+// Responde las acciones que usa src/api.js (login, session, changePin,
+// adminListUsers, adminResetPin, adminSetUserActive, adminRevokeUserSessions,
+// users, years, months, read, update/updateBatch y create) con datos inventados.
 //
 //   node tools/smoke/server.mjs            # escucha en :8787
 //   VITE_BACKEND_URL=http://localhost:8787 npm run dev
@@ -13,6 +14,20 @@ const ROWS = Number(process.env.ROWS || 300);
 const LATENCY_MS = Number(process.env.LATENCY_MS || 250);
 
 const USERS = ['Jorge', 'María', 'Lucía', 'Carlos', 'Ana'];
+const userRecords = new Map(
+  USERS.map((name, index) => [
+    name,
+    {
+      name,
+      role: index === 0 ? 'SUPERUSUARIO' : index === 1 ? 'ADMINISTRADOR' : 'USUARIO',
+      active: true,
+      hasPin: true,
+      mustChangePin: false,
+      pin: '1234',
+    },
+  ])
+);
+
 const HEADERS = [
   'Razón Social', 'R.U.C.', 'Clave MH', 'Vencimiento', 'Encargado',
   'Presentado', 'Presentado por:', 'Archivado', 'Archivado por:', 'Observaciones',
@@ -51,14 +66,38 @@ function getRows(year, month) {
 const sessions = new Map();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function serializeAdminUser(record) {
+  return {
+    name: record.name,
+    role: record.role,
+    active: Boolean(record.active),
+    hasPin: Boolean(record.hasPin),
+    mustChangePin: Boolean(record.mustChangePin),
+  };
+}
+
+function revokeUserSessions(userName) {
+  for (const [tok, sess] of sessions.entries()) {
+    if (sess.user === userName) sessions.delete(tok);
+  }
+}
+
 function sessionResponse(user) {
+  const record = userRecords.get(user) || {
+    name: user,
+    role: 'SUPERUSUARIO',
+    active: true,
+    hasPin: true,
+    mustChangePin: false,
+  };
   const token = `tok-${Math.random().toString(36).slice(2)}`;
-  sessions.set(token, { user, role: 'ADMINISTRADOR' });
+  sessions.set(token, { user: record.name, role: record.role });
   return {
     ok: true,
     sessionToken: token,
-    user: { name: user, role: 'ADMINISTRADOR' },
+    user: { name: record.name, role: record.role },
     pinless: true,
+    mustChangePin: Boolean(record.mustChangePin),
     expiresAt: Date.now() + 8 * 3600_000,
     idleTimeoutMs: 30 * 60_000,
   };
@@ -68,17 +107,94 @@ export async function handle(body) {
   await sleep(LATENCY_MS);
   const { action } = body || {};
   if (action === 'ping') return { ok: true };
-  if (action === 'login') return sessionResponse(String(body.user || 'Jorge'));
+  if (action === 'login') {
+    const userName = String(body.user || 'Jorge');
+    const record = userRecords.get(userName);
+    if (record && !record.active) {
+      return { ok: false, code: 'USER_NOT_FOUND', error: 'Usuario no autorizado' };
+    }
+    return sessionResponse(userName);
+  }
   const session = sessions.get(body.sessionToken);
   if (!session) return { ok: false, code: 'SESSION_REQUIRED', error: 'Sesión requerida' };
+  const activeRecord = userRecords.get(session.user);
+  if (activeRecord && !activeRecord.active) {
+    sessions.delete(body.sessionToken);
+    return { ok: false, code: 'SESSION_REVOKED', error: 'El usuario ya no está autorizado' };
+  }
+
   switch (action) {
     case 'session':
-      return { ...sessionResponse(session.user), sessionToken: body.sessionToken };
+      return {
+        ...sessionResponse(session.user),
+        sessionToken: body.sessionToken,
+      };
     case 'logout':
       sessions.delete(body.sessionToken);
       return { ok: true };
+    case 'changePin': {
+      const rec = userRecords.get(session.user);
+      if (rec) {
+        rec.pin = String(body.newPin || '1234');
+        rec.hasPin = true;
+        rec.mustChangePin = false;
+      }
+      revokeUserSessions(session.user);
+      return sessionResponse(session.user);
+    }
+    case 'adminListUsers': {
+      if (session.role !== 'SUPERUSUARIO') {
+        return { ok: false, code: 'FORBIDDEN', error: 'Requiere permisos de SUPERUSUARIO' };
+      }
+      return {
+        ok: true,
+        users: Array.from(userRecords.values()).map(serializeAdminUser),
+      };
+    }
+    case 'adminResetPin': {
+      if (session.role !== 'SUPERUSUARIO') {
+        return { ok: false, code: 'FORBIDDEN', error: 'Requiere permisos de SUPERUSUARIO' };
+      }
+      const target = userRecords.get(String(body.targetUser || ''));
+      if (!target) return { ok: false, code: 'USER_NOT_FOUND', error: 'Usuario no encontrado' };
+      if (!/^\d{4}$/.test(String(body.tempPin || ''))) {
+        return { ok: false, code: 'PIN_INVALID_FORMAT', error: 'El PIN temporal debe tener 4 dígitos' };
+      }
+      target.pin = String(body.tempPin);
+      target.hasPin = true;
+      target.mustChangePin = true;
+      revokeUserSessions(target.name);
+      return { ok: true, user: serializeAdminUser(target) };
+    }
+    case 'adminSetUserActive': {
+      if (session.role !== 'SUPERUSUARIO') {
+        return { ok: false, code: 'FORBIDDEN', error: 'Requiere permisos de SUPERUSUARIO' };
+      }
+      const target = userRecords.get(String(body.targetUser || ''));
+      if (!target) return { ok: false, code: 'USER_NOT_FOUND', error: 'Usuario no encontrado' };
+      if (!body.active && target.name === session.user) {
+        return { ok: false, code: 'SELF_DEACTIVATION_FORBIDDEN', error: 'No podés dar de baja tu propio usuario' };
+      }
+      target.active = Boolean(body.active);
+      revokeUserSessions(target.name);
+      return { ok: true, user: serializeAdminUser(target) };
+    }
+    case 'adminRevokeUserSessions': {
+      if (session.role !== 'SUPERUSUARIO') {
+        return { ok: false, code: 'FORBIDDEN', error: 'Requiere permisos de SUPERUSUARIO' };
+      }
+      const target = userRecords.get(String(body.targetUser || ''));
+      if (!target) return { ok: false, code: 'USER_NOT_FOUND', error: 'Usuario no encontrado' };
+      revokeUserSessions(target.name);
+      return { ok: true, user: serializeAdminUser(target) };
+    }
     case 'users':
-      return { ok: true, users: USERS.map((name) => ({ name })) };
+      return {
+        ok: true,
+        users: Array.from(userRecords.values())
+          .filter((u) => u.active)
+          .map((u) => ({ name: u.name })),
+      };
     case 'years':
       return { ok: true, years: ['2025', '2026'] };
     case 'months':

@@ -21,6 +21,8 @@ const PLANILLAS_SHEET_NAME = 'Planillas';
 
 const PIN_HASH_COLUMN = 3;
 const PIN_HASH_HEADER = 'PIN_HASH';
+const USER_STATUS_COLUMN = 4;
+const USER_STATUS_HEADER = 'ESTADO';
 
 const SESSION_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 const SESSION_IDLE_MS = 60 * 60 * 1000;
@@ -126,21 +128,58 @@ function ensureUsersSheet() {
   return sheet;
 }
 
-function getAllowedUsers() {
+function isActiveUserStatus(value) {
+  const compact = normalizeKey(value);
+  if (!compact) return true;
+  return (
+    compact !== 'inactivo' &&
+    compact !== 'inactiva' &&
+    compact !== 'baja' &&
+    compact !== 'desactivado' &&
+    compact !== 'desactivada' &&
+    compact !== 'suspendido' &&
+    compact !== 'suspendida' &&
+    compact !== 'no' &&
+    compact !== 'false' &&
+    compact !== '0'
+  );
+}
+
+function isTemporaryPinHash(pinHash) {
+  return String(pinHash || '').trim().indexOf('v1-temp:') === 0;
+}
+
+function getAllUsers() {
   const sheet = ensureUsersSheet();
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
-  const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  const values = sheet.getRange(2, 1, lastRow - 1, USER_STATUS_COLUMN).getValues();
   return values
-    .filter(function (r) { return String(r[0]).trim().length > 0; })
-    .map(function (r) {
+    .map(function (r, idx) {
+      const pinHash = String(r[2] || '').trim();
       return {
-        nombre: String(r[0]).trim(),
+        row: idx + 2,
+        nombre: String(r[0] || '').trim(),
         rol: normalizeRole(r[1]),
-        pinHash: String(r[2] || '').trim()
+        pinHash: pinHash,
+        activo: isActiveUserStatus(r[3]),
+        mustChangePin: isTemporaryPinHash(pinHash)
       };
-    });
+    })
+    .filter(function (u) { return u.nombre.length > 0; });
+}
+
+function getAllowedUsers() {
+  return getAllUsers().filter(function (u) { return u.activo; });
+}
+
+function findAnyUser(userName) {
+  const wanted = canonicalUserName(userName);
+  if (!wanted) return null;
+  return getAllUsers().find(function (u) {
+    return canonicalUserName(u.nombre) === wanted;
+  }) || null;
 }
 
 function findAllowedUser(userName) {
@@ -360,40 +399,51 @@ function aplicarPinPendienteDesdeProperties() {
   }
 }
 
-function setUserPinHash(userName, pin) {
-  const user = findAllowedUser(userName);
+function setUserPinHash(userName, pin, isTemp) {
+  const user = findAnyUser(userName);
   if (!user) throw new Error('Usuario no encontrado: ' + userName);
   if (!/^\d{4}$/.test(String(pin || ''))) {
     throw new Error('El PIN debe contener exactamente 4 dígitos');
   }
 
   const sheet = ensureUsersSheet();
-  const lastRow = sheet.getLastRow();
-  const names = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-  const wanted = canonicalUserName(user.nombre);
-  let targetRow = -1;
-
-  names.some(function (row, idx) {
-    if (canonicalUserName(row[0]) === wanted) {
-      targetRow = idx + 2;
-      return true;
-    }
-    return false;
-  });
-
+  const targetRow = user.row;
   if (targetRow < 2) throw new Error('No se encontró la fila del usuario');
-  sheet.getRange(targetRow, PIN_HASH_COLUMN).setValue(computePinHash(user.nombre, pin));
+  sheet
+    .getRange(targetRow, PIN_HASH_COLUMN)
+    .setValue(computePinHash(user.nombre, pin, Boolean(isTemp)));
+  revokeSessionsForUser(user.nombre);
+}
+
+function setUserActiveStatus(userName, active) {
+  const user = findAnyUser(userName);
+  if (!user) throw new Error('Usuario no encontrado: ' + userName);
+
+  const sheet = ensureUsersSheet();
+  const currentStatusHeader = String(sheet.getRange(1, USER_STATUS_COLUMN).getValue() || '').trim();
+  if (!currentStatusHeader) {
+    sheet.getRange(1, USER_STATUS_COLUMN).setValue(USER_STATUS_HEADER);
+  }
+  sheet
+    .getRange(user.row, USER_STATUS_COLUMN)
+    .setValue(active ? 'ACTIVO' : 'INACTIVO');
   revokeSessionsForUser(user.nombre);
 }
 
 // ── PIN Y LÍMITE DE INTENTOS ────────────────────────────────────────────
-function computePinHash(userName, pin) {
+function computePinHash(userName, pin, isTemp) {
   const signature = Utilities.computeHmacSha256Signature(
     canonicalUserName(userName) + '\n' + String(pin),
     requirePinPepper(),
     Utilities.Charset.UTF_8
   );
-  return 'v1:' + base64Url(signature);
+  return (isTemp ? 'v1-temp:' : 'v1:') + base64Url(signature);
+}
+
+function verifyUserPin(user, pin) {
+  if (!user || !user.pinHash || !/^\d{4}$/.test(String(pin || ''))) return false;
+  const expected = computePinHash(user.nombre, pin, Boolean(user.mustChangePin));
+  return constantTimeEquals(expected, user.pinHash);
 }
 
 function constantTimeEquals(left, right) {
@@ -559,6 +609,7 @@ function issueSession(user, pinless) {
     user: user.nombre,
     role: normalizeRole(user.rol),
     pinless: !!pinless,
+    mustChangePin: !!user.mustChangePin,
     pinVersion: getPinVersion(user.pinHash),
     createdAt: now,
     lastActivityAt: now,
@@ -710,6 +761,7 @@ function sessionResponse(issued) {
       role: issued.session.role
     },
     pinless: issued.session.pinless,
+    mustChangePin: !!issued.session.mustChangePin,
     expiresAt: issued.session.expiresAt,
     idleTimeoutMs: SESSION_IDLE_MS
   });
@@ -819,7 +871,7 @@ function handleLogin(body) {
     });
   }
 
-  if (!/^\d{4}$/.test(pin) || !constantTimeEquals(computePinHash(user.nombre, pin), user.pinHash)) {
+  if (!/^\d{4}$/.test(pin) || !verifyUserPin(user, pin)) {
     const failed = registerFailedPin(user.nombre);
     if (failed.locked) {
       return errorResponse('Demasiados intentos. Acceso bloqueado temporalmente.', 'PIN_LOCKED', {
@@ -848,6 +900,7 @@ function handleSessionCheck(body) {
       role: result.session.role
     },
     pinless: !!result.session.pinless,
+    mustChangePin: !!result.user.mustChangePin,
     expiresAt: result.session.expiresAt,
     idleTimeoutMs: SESSION_IDLE_MS
   });
@@ -887,7 +940,7 @@ function handleChangePin(body, sessionUser) {
       );
     }
 
-    if (!constantTimeEquals(computePinHash(user.nombre, currentPin), user.pinHash)) {
+    if (!verifyUserPin(user, currentPin)) {
       const failed = registerFailedPin(user.nombre);
       if (failed.locked) {
         return errorResponse(
@@ -934,7 +987,7 @@ function handleChangePin(body, sessionUser) {
       );
     }
 
-    setUserPinHash(freshUser.nombre, newPin);
+    setUserPinHash(freshUser.nombre, newPin, false);
     clearFailedPins(freshUser.nombre);
 
     const configuredUser = findAllowedUser(freshUser.nombre);
@@ -947,6 +1000,163 @@ function handleChangePin(body, sessionUser) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ── GESTIÓN EXCLUSIVA DE SUPERUSUARIO ───────────────────────────────────
+function serializeAdminUser(user) {
+  return {
+    name: user.nombre,
+    role: user.rol,
+    active: Boolean(user.activo),
+    hasPin: Boolean(user.pinHash),
+    mustChangePin: Boolean(user.mustChangePin)
+  };
+}
+
+function assertSuperuserRole(sessionRole) {
+  if (normalizeRole(sessionRole) !== 'SUPERUSUARIO') {
+    throw new Error('Esta operación requiere permisos de SUPERUSUARIO');
+  }
+}
+
+function handleAdminListUsers(sessionRole) {
+  assertSuperuserRole(sessionRole);
+  return jsonResponse({
+    ok: true,
+    users: getAllUsers().map(serializeAdminUser)
+  });
+}
+
+function handleAdminResetPin(body, sessionUser, sessionRole) {
+  assertSuperuserRole(sessionRole);
+  const targetName = String(body.targetUser || '').trim();
+  const tempPin = String(body.tempPin || '').trim();
+
+  if (!targetName) {
+    return errorResponse('Falta indicar el usuario', 'USER_REQUIRED');
+  }
+  if (!/^\d{4}$/.test(tempPin)) {
+    return errorResponse(
+      'El PIN temporal debe contener exactamente 4 dígitos',
+      'PIN_INVALID_FORMAT'
+    );
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return errorResponse(
+      'No se pudo reservar el cambio de PIN. Probá nuevamente.',
+      'PIN_CHANGE_LOCK_TIMEOUT'
+    );
+  }
+
+  try {
+    const target = findAnyUser(targetName);
+    if (!target) {
+      return errorResponse('Usuario no encontrado', 'USER_NOT_FOUND');
+    }
+
+    setUserPinHash(target.nombre, tempPin, true);
+    clearFailedPins(target.nombre);
+    logChange(
+      sessionUser,
+      'ADMIN',
+      USERS_SHEET_NAME,
+      target.row,
+      PIN_HASH_HEADER,
+      target.pinHash ? '[HASH]' : '',
+      '[HASH_TEMP]'
+    );
+
+    const updated = findAnyUser(target.nombre);
+    return jsonResponse({
+      ok: true,
+      user: serializeAdminUser(updated)
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleAdminSetUserActive(body, sessionUser, sessionRole) {
+  assertSuperuserRole(sessionRole);
+  const targetName = String(body.targetUser || '').trim();
+  const nextActive = Boolean(body.active);
+
+  if (!targetName) {
+    return errorResponse('Falta indicar el usuario', 'USER_REQUIRED');
+  }
+
+  if (!nextActive && canonicalUserName(targetName) === canonicalUserName(sessionUser)) {
+    return errorResponse(
+      'No podés dar de baja tu propio usuario activo',
+      'SELF_DEACTIVATION_FORBIDDEN'
+    );
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return errorResponse(
+      'No se pudo reservar la actualización del usuario. Probá nuevamente.',
+      'USER_UPDATE_LOCK_TIMEOUT'
+    );
+  }
+
+  try {
+    const target = findAnyUser(targetName);
+    if (!target) {
+      return errorResponse('Usuario no encontrado', 'USER_NOT_FOUND');
+    }
+
+    setUserActiveStatus(target.nombre, nextActive);
+    logChange(
+      sessionUser,
+      'ADMIN',
+      USERS_SHEET_NAME,
+      target.row,
+      USER_STATUS_HEADER,
+      target.activo ? 'ACTIVO' : 'INACTIVO',
+      nextActive ? 'ACTIVO' : 'INACTIVO'
+    );
+
+    const updated = findAnyUser(target.nombre);
+    return jsonResponse({
+      ok: true,
+      user: serializeAdminUser(updated)
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleAdminRevokeUserSessions(body, sessionUser, sessionRole) {
+  assertSuperuserRole(sessionRole);
+  const targetName = String(body.targetUser || '').trim();
+  if (!targetName) {
+    return errorResponse('Falta indicar el usuario', 'USER_REQUIRED');
+  }
+
+  const target = findAnyUser(targetName);
+  if (!target) {
+    return errorResponse('Usuario no encontrado', 'USER_NOT_FOUND');
+  }
+
+  revokeSessionsForUser(target.nombre);
+  clearFailedPins(target.nombre);
+  logChange(
+    sessionUser,
+    'ADMIN',
+    USERS_SHEET_NAME,
+    target.row,
+    'SESIONES',
+    'ACTIVAS',
+    'REVOCADAS'
+  );
+
+  return jsonResponse({
+    ok: true,
+    user: serializeAdminUser(target)
+  });
 }
 
 // ── AUTORIZACIÓN DE COLUMNAS ────────────────────────────────────────────
@@ -1116,6 +1326,38 @@ function doPost(e) {
       return handleChangePin(body, sessionUser);
     } catch (err) {
       return errorResponse(err.message, 'PIN_CHANGE_ERROR');
+    }
+  }
+
+  if (action === 'adminListUsers') {
+    try {
+      return handleAdminListUsers(sessionRole);
+    } catch (err) {
+      return errorResponse(err.message, 'FORBIDDEN');
+    }
+  }
+
+  if (action === 'adminResetPin') {
+    try {
+      return handleAdminResetPin(body, sessionUser, sessionRole);
+    } catch (err) {
+      return errorResponse(err.message, 'ADMIN_RESET_PIN_ERROR');
+    }
+  }
+
+  if (action === 'adminSetUserActive') {
+    try {
+      return handleAdminSetUserActive(body, sessionUser, sessionRole);
+    } catch (err) {
+      return errorResponse(err.message, 'ADMIN_USER_STATUS_ERROR');
+    }
+  }
+
+  if (action === 'adminRevokeUserSessions') {
+    try {
+      return handleAdminRevokeUserSessions(body, sessionUser, sessionRole);
+    } catch (err) {
+      return errorResponse(err.message, 'ADMIN_REVOKE_SESSIONS_ERROR');
     }
   }
 

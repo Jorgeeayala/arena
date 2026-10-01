@@ -51,9 +51,13 @@ Estado de referencia: autenticación individual y configuración inicial de PIN 
   - El cambio de usuario queda donde estaba (píldora de usuario en la barra),
     sin exponerlo para usuarios normales en el panel de Configuración.
   - Falta desplegar el backend actualizado y probar contra el Web App real.
-- [ ] Evaluar un panel exclusivo para `SUPERUSUARIO` que restablezca un PIN temporal y fuerce su cambio.
-- [ ] Implementar baja/reactivación de usuarios y revocación inmediata de todas sus sesiones.
-- [ ] Evaluar validación al recuperar el foco y bloqueo `fail closed` cuando no se pueda renovar autorización.
+- [x] Evaluar un panel exclusivo para `SUPERUSUARIO` que restablezca un PIN temporal y fuerce su cambio.
+  - Implementado en `AppsScript-Code-auth-PROPUESTA.gs` (acciones `adminListUsers` y `adminResetPin` con hash `v1-temp:`), `src/api.js`, `src/components/SettingsDialog.jsx` y `src/App.jsx`.
+  - Cuando un usuario ingresa con PIN temporal (`mustChangePin: true`), se abre automáticamente el diálogo de cambio obligatorio de PIN antes de continuar.
+- [x] Implementar baja/reactivación de usuarios y revocación inmediata de todas sus sesiones.
+  - Implementado en `AppsScript-Code-auth-PROPUESTA.gs` (acciones `adminSetUserActive` sobre columna D `ESTADO` y `adminRevokeUserSessions`) y expuesto en Configuración para `SUPERUSUARIO`.
+- [x] Evaluar validación al recuperar el foco y bloqueo `fail closed` cuando no se pueda renovar autorización.
+  - En `src/App.jsx`, al volver a la pestaña (`visibilitychange` / `focus`) se valida la sesión contra el servidor de inmediato (con throttle de 5 s) y se fuerza el cierre (`fail closed`) si expiró por tiempo/inactividad o si falla reiteradamente la renovación.
 
 ### Recuperación manual disponible actualmente
 
@@ -108,23 +112,21 @@ quedó fuera de la aplicación aunque su CSS siga en `styles.css`.
 - [ ] **Probar las acciones rápidas contra el backend real.** Se validaron
   contra un mock local; falta confirmar el guardado y el sello de usuario
   contra el Apps Script desplegado.
-- [ ] **Definir qué pasa con el orden manual (`sortBy`).** El contexto sigue
-  exponiendo `sortBy`/`setSortBy` y nadie los usa: la lista ordena por
-  vencimiento y después por nombre. Hay que decidir si se expone un
-  selector de orden o si se quita del contexto.
-- [ ] **Limpiar el CSS huérfano de la interfaz anterior.** Quedan ~57 clases
-  en `styles.css` sin ningún uso en JSX (`client-card*`, `swipe-*`,
-  `summary-*`, `filters-sheet-*`, `status-badge-*`, `toggle-switch-*`,
-  entre otras). Conviene borrarlas recién cuando la nueva UI esté aprobada
-  en producción, para no perder referencias durante la transición.
-- [ ] **Revisar el resto de pantallas con la escala nueva.** `ClientDetail`,
-  `AssignClients` y los pickers siguen con tamaños en px propios de
-  `styles.css`; se ven bien, pero todavía no acompañan la preferencia de
-  *Tamaño de texto*.
+- [x] **Definir qué pasa con el orden manual (`sortBy`).** Se expuso el
+  selector de orden (A–Z / vencimiento) conectado a `sortBy`.
+- [x] **Limpiar el CSS huérfano de la interfaz anterior.** Eliminadas las
+  clases sin uso en JSX (`client-card*`, `client-list`, `swipe-*`,
+  `summary-*`, `filters-sheet-*`, `status-badge-*`, `toggle-switch-*`, etc.)
+  y los activos muertos (`src/assets/hero.png`, `src/assets/vite.svg`,
+  `public/icons.svg`, `public/favicon.svg`).
+- [x] **Revisar el resto de pantallas con la escala nueva.** Todas las reglas
+  tipográficas de `styles.css` y los estilos inline de `ClientDetail`,
+  `AssignClients`, `NewClient` y los pickers ahora acompañan `--ui-font-scale`
+  con mínimo base de 12px.
 
 ## Funciones pendientes fuera de autenticación
 
-- [ ] Implementar `action: "create"` en el backend antes de habilitar definitivamente el alta de nuevos clientes.
+- [x] Implementar `action: "create"` en el backend antes de habilitar definitivamente el alta de nuevos clientes.
 - [ ] Configurar el ID definitivo de la extensión donde corresponda.
 - [ ] Definir, si se necesita una aplicación de PC, el puerto/origen y protocolo del puente local.
 - [x] Revisar los warnings heredados del lint y el estado de dependencias con `npm audit` en una tarea separada.

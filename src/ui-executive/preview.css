@@ -783,6 +783,12 @@
   color: var(--rx-subtle);
 }
 
+.real-exec-search input::-webkit-search-cancel-button,
+.real-exec-search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .real-exec-search button {
   width: 26px;
   height: 26px;

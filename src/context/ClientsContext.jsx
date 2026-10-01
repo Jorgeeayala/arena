@@ -58,6 +58,10 @@ const STORAGE_KEY_TEAM_ORDER = 'app-team-order';
 const STORAGE_KEY_REPARTO = 'app-reparto-users';
 
 const ClientsContext = createContext(null);
+const ClientsMetaContext = createContext(null);
+const ClientsDataContext = createContext(null);
+const ClientsFiltersContext = createContext(null);
+const ClientsSaveStateContext = createContext(null);
 
 function readSavedTeam() {
   try {
@@ -253,7 +257,12 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
   const hasDataRef = useRef(false);
 
   const applySheetData = useCallback((data) => {
-    setHeaders(data.headers || []);
+    const nextHeaders = data.headers || [];
+    setHeaders((prev) =>
+      prev.length === nextHeaders.length && prev.every((h, i) => h === nextHeaders[i])
+        ? prev
+        : nextHeaders
+    );
     // Copia defensiva: el cache de api.js muta sus filas in-place con
     // las actualizaciones optimistas; trabajar con copias evita que el
     // state de React cambie "por atrás" sin disparar un re-render.
@@ -704,24 +713,20 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
     [canAssignClients, encargadoCol, saveRowUpdatesInBackground]
   );
 
-  const value = useMemo(
+  // Sub-contexto 1: Metadatos, equipo, columnas detectadas y acciones estables.
+  // No depende de `rows`, de los filtros ni de `savingRows`/`savedRows`:
+  // componentes como `PeriodScreens` o `ClientDetail` consumen este sub-contexto
+  // y NO se re-renderizan cuando se edita una fila, se escribe en el buscador
+  // o se confirma un lote de guardado.
+  const metaValue = useMemo(
     () => ({
-      // período y permisos derivados de la sesión
       user,
       userRole,
       canAssignClients,
       year,
       month,
-      // datos
       headers,
-      rows,
-      assignedRows,
-      suggestRoundRobin,
-      loading,
-      refreshing,
-      error,
       reload,
-      // equipo
       teamUsers,
       participants,
       repartoUsers,
@@ -729,7 +734,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       swapTeamMembers,
       syncingUsers,
       syncTeamUsers,
-      // columnas detectadas
+      suggestRoundRobin,
       nameKey,
       vencimientoKey,
       rucKey,
@@ -740,32 +745,14 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       archivadoPorCol,
       statusHeaders,
       primaryStatusHeader,
-      availableVencimientos,
       getVencimientoDay,
-      unassignedCount,
-      // filtros compartidos
-      query,
-      setQuery,
-      selectedVencimiento,
-      setSelectedVencimiento,
-      selectedStatus,
-      setSelectedStatus,
-      selectedAssignee,
-      setSelectedAssignee,
-      sortBy,
-      setSortBy,
-      applySharedFilters,
-      getSearchScore,
-      matchesAssignee,
       isRowPresentado,
-      activeFilterCount,
-      hasActiveFilters,
+      setQuery,
+      setSelectedVencimiento,
+      setSelectedStatus,
+      setSelectedAssignee,
+      setSortBy,
       clearFilters,
-      // escritura
-      savingRows,
-      savedRows,
-      savingRowSet,
-      savedRowSet,
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,
@@ -781,12 +768,6 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       year,
       month,
       headers,
-      rows,
-      assignedRows,
-      suggestRoundRobin,
-      loading,
-      refreshing,
-      error,
       reload,
       teamUsers,
       participants,
@@ -795,6 +776,7 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       swapTeamMembers,
       syncingUsers,
       syncTeamUsers,
+      suggestRoundRobin,
       nameKey,
       vencimientoKey,
       rucKey,
@@ -805,25 +787,9 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
       archivadoPorCol,
       statusHeaders,
       primaryStatusHeader,
-      availableVencimientos,
       getVencimientoDay,
-      unassignedCount,
-      query,
-      selectedVencimiento,
-      selectedStatus,
-      selectedAssignee,
-      sortBy,
-      applySharedFilters,
-      getSearchScore,
-      matchesAssignee,
       isRowPresentado,
-      activeFilterCount,
-      hasActiveFilters,
       clearFilters,
-      savingRows,
-      savedRows,
-      savingRowSet,
-      savedRowSet,
       applyLocalUpdates,
       applyBulkUpdates,
       saveRowUpdates,
@@ -834,10 +800,145 @@ export function ClientsProvider({ user, userRole, year, month, children }) {
     ]
   );
 
-  return <ClientsContext.Provider value={value}>{children}</ClientsContext.Provider>;
+  // Sub-contexto 2: Filas y estado de carga del período.
+  const dataValue = useMemo(
+    () => ({
+      rows,
+      assignedRows,
+      loading,
+      refreshing,
+      error,
+      availableVencimientos,
+      unassignedCount,
+    }),
+    [
+      rows,
+      assignedRows,
+      loading,
+      refreshing,
+      error,
+      availableVencimientos,
+      unassignedCount,
+    ]
+  );
+
+  // Sub-contexto 3: Filtros compartidos y funciones de filtrado.
+  const filtersValue = useMemo(
+    () => ({
+      query,
+      setQuery,
+      selectedVencimiento,
+      setSelectedVencimiento,
+      selectedStatus,
+      setSelectedStatus,
+      selectedAssignee,
+      setSelectedAssignee,
+      sortBy,
+      setSortBy,
+      applySharedFilters,
+      getSearchScore,
+      matchesAssignee,
+      activeFilterCount,
+      hasActiveFilters,
+      clearFilters,
+    }),
+    [
+      query,
+      selectedVencimiento,
+      selectedStatus,
+      selectedAssignee,
+      sortBy,
+      applySharedFilters,
+      getSearchScore,
+      matchesAssignee,
+      activeFilterCount,
+      hasActiveFilters,
+      clearFilters,
+    ]
+  );
+
+  // Sub-contexto 4: Estado transitorio de guardado por fila (spinner / ✓).
+  const saveStateValue = useMemo(
+    () => ({
+      savingRows,
+      savedRows,
+      savingRowSet,
+      savedRowSet,
+    }),
+    [savingRows, savedRows, savingRowSet, savedRowSet]
+  );
+
+  const value = useMemo(
+    () => ({
+      ...metaValue,
+      ...dataValue,
+      ...filtersValue,
+      ...saveStateValue,
+    }),
+    [metaValue, dataValue, filtersValue, saveStateValue]
+  );
+
+  return (
+    <ClientsMetaContext.Provider value={metaValue}>
+      <ClientsDataContext.Provider value={dataValue}>
+        <ClientsFiltersContext.Provider value={filtersValue}>
+          <ClientsSaveStateContext.Provider value={saveStateValue}>
+            <ClientsContext.Provider value={value}>{children}</ClientsContext.Provider>
+          </ClientsSaveStateContext.Provider>
+        </ClientsFiltersContext.Provider>
+      </ClientsDataContext.Provider>
+    </ClientsMetaContext.Provider>
+  );
 }
 
-// Hook de acceso al contexto compartido de la planilla.
+// Hook de acceso al sub-contexto de metadatos, columnas, equipo y acciones
+// estables (no se invalida cuando cambian `rows`, filtros o `savedRows`).
+// oxlint-disable-next-line react/only-export-components -- archivo de contexto: conviven Provider y hooks
+export function useClientsMeta() {
+  const ctx = useContext(ClientsMetaContext);
+  if (!ctx) {
+    throw new Error('useClientsMeta() debe usarse dentro de <ClientsProvider>');
+  }
+  return ctx;
+}
+
+// Alias semántico para pantallas que sólo disparan acciones (ej. `reload`).
+// oxlint-disable-next-line react/only-export-components -- archivo de contexto: conviven Provider y hooks
+export function useClientsActions() {
+  return useClientsMeta();
+}
+
+// Hook de acceso sólo a las filas y estado de carga del período.
+// oxlint-disable-next-line react/only-export-components -- archivo de contexto: conviven Provider y hooks
+export function useClientsData() {
+  const ctx = useContext(ClientsDataContext);
+  if (!ctx) {
+    throw new Error('useClientsData() debe usarse dentro de <ClientsProvider>');
+  }
+  return ctx;
+}
+
+// Hook de acceso sólo a los filtros compartidos.
+// oxlint-disable-next-line react/only-export-components -- archivo de contexto: conviven Provider y hooks
+export function useClientsFilters() {
+  const ctx = useContext(ClientsFiltersContext);
+  if (!ctx) {
+    throw new Error('useClientsFilters() debe usarse dentro de <ClientsProvider>');
+  }
+  return ctx;
+}
+
+// Hook de acceso sólo a los indicadores de guardado por fila.
+// oxlint-disable-next-line react/only-export-components -- archivo de contexto: conviven Provider y hooks
+export function useClientsSaveState() {
+  const ctx = useContext(ClientsSaveStateContext);
+  if (!ctx) {
+    throw new Error('useClientsSaveState() debe usarse dentro de <ClientsProvider>');
+  }
+  return ctx;
+}
+
+// Hook de acceso al contexto compartido completo de la planilla.
 // oxlint-disable-next-line react/only-export-components -- archivo de contexto: convive el Provider (componente) con useClients (hook)
 export function useClients() {
   const ctx = useContext(ClientsContext);

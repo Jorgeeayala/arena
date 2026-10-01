@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useClients } from '../context/ClientsContext';
+import { useClientsMeta } from '../context/ClientsContext';
 import {
   pickNameColumn,
   findUserStampColumn,
@@ -60,8 +60,9 @@ export default function ClientDetail({
 }) {
   // El detalle también escribe sobre el estado compartido del período: así
   // lo que se edita acá ya está actualizado en la lista y en "Asignar
-  // clientes" cuando se vuelve, sin recargar nada.
-  const { saveRowUpdatesInBackground, encargadoCol, teamUsers, repartoUsers } = useClients();
+  // clientes" cuando se vuelve, sin recargar nada. Usa useClientsMeta()
+  // para no re-renderizarse cuando cambian `rows`, filtros o `savedRows`.
+  const { saveRowUpdatesInBackground, encargadoCol, teamUsers, repartoUsers } = useClientsMeta();
 
   const [values, setValues] = useState(client);
   const [savedField, setSavedField] = useState(null);

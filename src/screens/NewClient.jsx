@@ -240,7 +240,7 @@ export default function NewClient({
           className="btn-primary"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
-          style={{ width: '100%', padding: '14px', fontSize: '16px' }}
+          style={{ width: '100%', padding: '14px', fontSize: 'calc(16px * var(--ui-font-scale, 1))' }}
           disabled={saving}
           onClick={handleCreate}
         >
